@@ -1827,7 +1827,7 @@ variable.</p>
     line_no++;
   }
 
-  ws = (' ' | '\t' | ('\n' %next_line) | "//" . (any - '\n') . ('\n' %next_line) | "/*" . any :>> "*/")*;
+  ws = (' ' | '\t' | ('\n' %next_line) | "//" . (any - '\n')* . ('\n' %next_line) | "/*" . any :>> "*/")*;
 
   action start {
     start = fpc;
