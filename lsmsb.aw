@@ -175,6 +175,7 @@ struct lsmsb_value {
   <tr><td><tt>JNZ</tt></td> <td>Jump conditionally</td> <td>If reg<sub>1</sub> != 0 then skip the next <i>n</i> rules</td></tr>
   <tr><td><tt>JZ</tt></td> <td>Jump conditionally</td> <td>If reg<sub>1</sub> == 0 then skip the next <i>n</i> rules</td></tr>
   <tr><td><tt>EQ</tt></td> <td>Equal?</td> <td>reg<sub>1</sub> = reg<sub>2</sub> == reg<sub>3</sub></td></tr>
+  <tr><td><tt>NE</tt></td> <td>Not equal?</td> <td>reg<sub>1</sub> = reg<sub>2</sub> != reg<sub>3</sub></td></tr>
   <tr><td><tt>GT</tt></td> <td>Greater than?</td> <td>reg<sub>1</sub> = reg<sub>2</sub> &gt; reg<sub>3</sub></td></tr>
   <tr><td><tt>LT</tt></td> <td>Less than?</td> <td>reg<sub>1</sub> = reg<sub>2</sub> &lt; reg<sub>3</sub></td></tr>
   <tr><td><tt>GTE</tt></td> <td>Greater than or equal?</td> <td>reg<sub>1</sub> = reg<sub>2</sub> &gt;= reg<sub>3</sub></td></tr>
@@ -197,6 +198,7 @@ enum lsmsb_opcode {
 	LSMSB_OPCODE_JNZ,
 	LSMSB_OPCODE_JZ,
 	LSMSB_OPCODE_EQ,
+	LSMSB_OPCODE_NE,
 	LSMSB_OPCODE_GT,
 	LSMSB_OPCODE_LT,
 	LSMSB_OPCODE_GTE,
@@ -580,6 +582,7 @@ static char lsmsb_op_type_vector_update(uint8_t *tv, uint32_t op,
 			return 0;
 		return 1;
 	case LSMSB_OPCODE_EQ:
+	case LSMSB_OPCODE_NE:
 	case LSMSB_OPCODE_GT:
 	case LSMSB_OPCODE_LT:
 	case LSMSB_OPCODE_GTE:
@@ -945,6 +948,12 @@ char lsmsb_filter_run(const struct lsmsb_filter *filter,
 			reg2 = lsmsb_op_reg2_get(op);
 			reg3 = lsmsb_op_reg3_get(op);
 			regs[reg1].value = regs[reg2].value == regs[reg3].value;
+			break;
+		case LSMSB_OPCODE_NE:
+			reg1 = lsmsb_op_reg1_get(op);
+			reg2 = lsmsb_op_reg2_get(op);
+			reg3 = lsmsb_op_reg3_get(op);
+			regs[reg1].value = regs[reg2].value != regs[reg3].value;
 			break;
 		case LSMSB_OPCODE_GT:
 			reg1 = lsmsb_op_reg1_get(op);
