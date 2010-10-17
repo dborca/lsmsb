@@ -1159,7 +1159,7 @@ static uint8_t *type_vector_for_filter(const struct lsmsb_filter *filter,
 <p>
   A sandbox is installed from userspace by writing a compact representation of
   a set of filters to the kernel. Currently, the userspace process does this by
-  writing to <tt>/proc/self/sandbox</tt>, although that could change in future
+  writing to <tt>/proc/self/attr/current</tt>, although that could change in future
   versions.
 </p>
 
@@ -1214,9 +1214,8 @@ struct lsmsb_constant_wire {
 
 #define LSMSB_MAX_SANDBOXES_PER_PROCESS 16
 
-int lsmsb_sandbox_install(struct task_struct *task,
-			  const char __user *buf,
-			  size_t len)
+static int lsmsb_sandbox_install(struct task_struct *task,
+				 const char *buf, size_t len)
 {
 	uint32_t num_filters;
 	struct lsmsb_sandbox *sandbox, *current_sandbox;
@@ -1226,8 +1225,7 @@ int lsmsb_sandbox_install(struct task_struct *task,
 
 	@<Check for limits on the number of sandboxes@>
 
-	if (copy_from_user(&num_filters, buf, sizeof(num_filters)))
-		return -EFAULT;
+	memcpy(&num_filters, buf, sizeof(num_filters));
 	buf += sizeof(num_filters);
 	if (num_filters > 1 /* FIXME */)
 		return -EINVAL;
@@ -1252,6 +1250,49 @@ error:
 	kfree(sandbox);
 
 	return return_code;
+}
+
+static int lsmsb_getprocattr(struct task_struct *p, char *name, char **value)
+{
+	char *cp;
+	int slen;
+
+	if (strcmp(name, "current") != 0)
+		return -EINVAL;
+
+	cp = kstrdup("+", GFP_KERNEL);
+	if (cp == NULL)
+		return -ENOMEM;
+
+	slen = strlen(cp);
+	*value = cp;
+	return slen;
+}
+
+static int lsmsb_setprocattr(struct task_struct *p, char *name,
+			     void *value, size_t size)
+{
+	int rv;
+
+	if (p != current)
+		return -EPERM;
+
+	if (!capable(CAP_MAC_ADMIN))
+		return -EPERM;
+
+	if (value == NULL || size == 0)
+		return -EINVAL;
+
+	if (strcmp(name, "current") != 0)
+		return -EINVAL;
+
+	rv = lsmsb_sandbox_install(p, value, size);
+	if (rv) {
+		printk(KERN_ERR "bad sandbox\n");
+		return rv;
+	}
+
+	return size;
 }
 
 @/ Pushing a new sandbox
@@ -1305,7 +1346,7 @@ process.</p>
 @<Installing a filter@>=
 
 static int lsmsb_filter_install(struct lsmsb_sandbox *sandbox,
-				const char __user **buf)
+				const char **buf)
 {
 	struct lsmsb_filter_wire filter_wire;
 	struct lsmsb_filter *filter;
@@ -1313,8 +1354,7 @@ static int lsmsb_filter_install(struct lsmsb_sandbox *sandbox,
 	int return_code = -ENOMEM;
 	uint8_t *type_vector;
 
-	if (copy_from_user(&filter_wire, *buf, sizeof(filter_wire)))
-		return -EFAULT;
+	memcpy(&filter_wire, *buf, sizeof(filter_wire));
 
 	if (filter_wire.num_operations > LSMSB_FILTER_OPS_MAX ||
 	    filter_wire.num_spill_slots > LSMSB_SPILL_SLOTS_MAX ||
@@ -1340,11 +1380,8 @@ static int lsmsb_filter_install(struct lsmsb_sandbox *sandbox,
 				     GFP_KERNEL);
 	if (!filter->operations)
 		goto error;
-	if (copy_from_user(filter->operations, *buf,
-			   filter->num_operations * sizeof(uint32_t))) {
-		return_code = -EFAULT;
-		goto error;
-	}
+	memcpy(filter->operations, *buf,
+			   filter->num_operations * sizeof(uint32_t));
 	*buf += filter->num_operations * sizeof(uint32_t);
 
 	for (i = 0; i < filter_wire.num_constants; ++i) {
@@ -1395,12 +1432,11 @@ error:
 @<Installing a constant@>=
 
 static int lsmsb_constant_install(struct lsmsb_value *value,
-				  const char __user **buf)
+				  const char **buf)
 {
 	struct lsmsb_constant_wire constant_wire;
 
-	if (copy_from_user(&constant_wire, *buf, sizeof(constant_wire)))
-		return -EFAULT;
+	memcpy(&constant_wire, *buf, sizeof(constant_wire));
 	if (constant_wire.type > 1)
 		return -EINVAL;
 	*buf += sizeof(constant_wire);
@@ -1414,10 +1450,7 @@ static int lsmsb_constant_install(struct lsmsb_value *value,
 	value->data = kmalloc(value->value, GFP_KERNEL);
 	if (!value->data)
 		return -ENOMEM;
-	if (copy_from_user(value->data, *buf, value->value)) {
-		kfree(value->data);
-		return -EFAULT;
-	}
+	memcpy(value->data, *buf, value->value);
 	*buf += value->value;
 
 	return 0;
@@ -1601,6 +1634,8 @@ static int lsmsb_dentry_open(struct file *f, const struct cred *cred)
 @<LSM operations structure@>=
 struct security_operations lsmsb_ops = {
 	.name   	= "lsmsb",
+	.setprocattr    = lsmsb_setprocattr,
+	.getprocattr    = lsmsb_getprocattr,
 	.dentry_open    = lsmsb_dentry_open,
 	.cred_prepare   = lsmsb_cred_prepare,
 	.cred_free      = lsmsb_cred_free,
@@ -2473,16 +2508,16 @@ void kfree(void* heap) { free(heap); }
 @/* Using a sandbox
 
 <p>Once a sandbox has been built, using it is very simple. One needs only to
-write the sandbox to <tt>/proc/self/sandbox</tt>. We provide a very simple
+write the sandbox to <tt>/proc/self/attr/current</tt>. We provide a very simple
 binary which installs a given sandbox and runs a shell within it.</p>
 
 <p>Note that, because sandboxes are composable, this can be done multiple
 times.</p>
 
 @<sb-install|Activate a sandbox@>=
-  const int sandboxfd = open("/proc/self/sandbox", O_WRONLY);
+  const int sandboxfd = open("/proc/self/attr/current", O_WRONLY);
   if (sandboxfd < 0) {
-    perror("Opening /proc/self/sandbox");
+    perror("Opening /proc/self/attr/current");
     return 1;
   }
 
