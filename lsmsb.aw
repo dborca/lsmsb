@@ -218,11 +218,15 @@ well as the context that it runs in. (See <a href="@@cite:Filter structure@@">ab
   <tr><th>Name</th> <th>Explanation</th> <th>Arguments</th></tr>
 
   <tr><td><tt>DENTRY_OPEN</tt></td> <td>File open</td> <td>Filename(<i>bs</i>) and mode(<i>i</i>)</td></tr>
+  <tr><td><tt>SOCKET_CREATE</tt></td> <td>Create socket</td> <td>Family(<i>i</i>), type(<i>i</i>), protocol(<i>i</i>) and kern(<i>i</i>)</td></tr>
+  <tr><td><tt>SOCKET_CONNECT</tt></td> <td>Connect socket</td> <td>Family(<i>i</i>), type(<i>i</i>), protocol(<i>i</i>), port(<i>i</i>), ipv4(<i>i</i>) and data(<i>bs</i>)</td></tr>
 </table>
 
 @<Filter codes@>=
 enum lsmsb_filter_code {
 	LSMSB_FILTER_CODE_DENTRY_OPEN = 0,
+	LSMSB_FILTER_CODE_SOCKET_CREATE,
+	LSMSB_FILTER_CODE_SOCKET_CONNECT,
 	LSMSB_FILTER_CODE_MAX,  // not a real filter code
 };
 
@@ -1117,6 +1121,8 @@ struct filter_context {
 
 const struct filter_context filter_contexts[] = {
   {"dentry-open", "BI"}, // LSMSB_FILTER_CODE_DENTRY_OPEN
+  {"socket-create", "IIII"}, // LSMSB_FILTER_CODE_SOCKET_CREATE
+  {"socket-connect", "IIIIIB"}, // LSMSB_FILTER_CODE_SOCKET_CONNECT
   {NULL, NULL}
 };
 
@@ -1404,6 +1410,8 @@ static int lsmsb_filter_install(struct lsmsb_sandbox *sandbox,
 
 	switch (filter_wire.filter_code) {
 	case LSMSB_FILTER_CODE_DENTRY_OPEN:
+	case LSMSB_FILTER_CODE_SOCKET_CREATE:
+	case LSMSB_FILTER_CODE_SOCKET_CONNECT:
 		if (sandbox->filters[filter_wire.filter_code]) {
 			return_code = -EINVAL;
 			goto error;
@@ -1469,6 +1477,10 @@ static int lsmsb_constant_install(struct lsmsb_value *value,
 @<LSM interface@>=
 
 @<dentry_open hook@>
+
+@<socket_create hook@>
+
+@<socket_connect hook@>
 
 @<LSM operations structure@>
 
@@ -1629,6 +1641,123 @@ static int lsmsb_dentry_open(struct file *f, const struct cred *cred)
 	return 0;
 }
 
+@/ The <tt>socket_create</tt> hook
+
+<p><tt>socket_create</tt> is called when a process creates a socket.</p>
+
+@<socket_create hook@>=
+static int lsmsb_socket_create(int family, int type, int protocol, int kern)
+{
+	const struct cred *cred = current_cred();
+	const struct lsmsb_sandbox *sandbox;
+	const struct lsmsb_filter *filter;
+	struct lsmsb_value registers[4];
+
+	if (!cred->security)
+		return 0;
+	sandbox = cred->security;
+
+	while (sandbox) {
+		filter = sandbox->filters[LSMSB_FILTER_CODE_SOCKET_CREATE];
+		if (filter)
+			break;
+		sandbox = sandbox->parent;
+	}
+
+	if (!sandbox)
+		return 0;
+
+	registers[0].data = NULL;
+	registers[0].value = family;
+	registers[1].data = NULL;
+	registers[1].value = type;
+	registers[2].data = NULL;
+	registers[2].value = protocol;
+	registers[3].data = NULL;
+	registers[3].value = kern;
+
+	while (sandbox) {
+		filter = sandbox->filters[LSMSB_FILTER_CODE_SOCKET_CREATE];
+		if (filter) {
+			if (!lsmsb_filter_run(filter, registers,
+					      ARRAY_SIZE(registers))) {
+				return -EPERM;
+			}
+		}
+
+		sandbox = sandbox->parent;
+	}
+
+	return 0;
+}
+
+@/ The <tt>socket_connect</tt> hook
+
+<p><tt>socket_connect</tt> is called when a process connects a socket. If the
+socket is AF_INET, then the filter receives port number in r3 and IP address
+in r4. For other socket types, those parameters are set to zero.<p>
+
+@<socket_connect hook@>=
+static int lsmsb_socket_connect(struct socket *sock,
+				struct sockaddr *address, int addrlen)
+{
+	const struct cred *cred = current_cred();
+	const struct lsmsb_sandbox *sandbox;
+	const struct lsmsb_filter *filter;
+	struct lsmsb_value registers[6];
+	const struct sock *sk = sock->sk;
+
+	if (!cred->security)
+		return 0;
+	sandbox = cred->security;
+
+	while (sandbox) {
+		filter = sandbox->filters[LSMSB_FILTER_CODE_SOCKET_CONNECT];
+		if (filter)
+			break;
+		sandbox = sandbox->parent;
+	}
+
+	if (!sandbox)
+		return 0;
+	
+	if (!sk)
+		return 0;
+	registers[0].data = NULL;
+	registers[0].value = sk->sk_family;
+	registers[1].data = NULL;
+	registers[1].value = sock->type;
+	registers[2].data = NULL;
+	registers[2].value = sk->sk_protocol;
+	registers[3].data = NULL;
+	registers[3].value = 0;
+	registers[4].data = NULL;
+	registers[4].value = 0;
+	if (sk->sk_family == AF_INET) {
+		struct sockaddr_in *addr4 = (struct sockaddr_in *)address;
+		if (addrlen < sizeof(struct sockaddr_in))
+			return -EINVAL;
+		registers[3].value = ntohs(addr4->sin_port);
+		registers[4].value = ntohl(addr4->sin_addr.s_addr);
+	}
+	registers[5].data = "";
+	registers[5].value = 0;
+
+	while (sandbox) {
+		filter = sandbox->filters[LSMSB_FILTER_CODE_SOCKET_CONNECT];
+		if (filter) {
+			if (!lsmsb_filter_run(filter, registers,
+					      ARRAY_SIZE(registers))) {
+				return -EPERM;
+			}
+		}
+
+		sandbox = sandbox->parent;
+	}
+
+	return 0;
+}
+
 @/
 
 @<LSM operations structure@>=
@@ -1637,6 +1766,8 @@ struct security_operations lsmsb_ops = {
 	.setprocattr    = lsmsb_setprocattr,
 	.getprocattr    = lsmsb_getprocattr,
 	.dentry_open    = lsmsb_dentry_open,
+	.socket_create  = lsmsb_socket_create,
+	.socket_connect = lsmsb_socket_connect,
 	.cred_prepare   = lsmsb_cred_prepare,
 	.cred_free      = lsmsb_cred_free,
 };
@@ -1677,6 +1808,7 @@ security_initcall(lsmsb_init);
 #include <linux/mount.h>
 #include <linux/mnt_namespace.h>
 #include <linux/fs_struct.h>
+#include <net/sock.h>
 #include <linux/uaccess.h>
 
 #include "lsmsb_external.h"
@@ -1762,6 +1894,35 @@ filter dentry-open {
 
 @{file example-sandbox2.sb
 @<ex2@>
+
+@{file example-sandbox3.sb
+filter socket-create {
+  ldi r4, 1; // AF_UNIX
+  eq  r0, r0, r4;
+  ret r0;
+}
+
+@{file example-sandbox4.sb
+filter socket-connect {
+  constants {
+    var localnet u32 = 0x7F000000;
+  }
+
+  ldi r6, 1; // AF_UNIX
+  eq  r0, r1, r6;
+  jnz r0, #done;
+
+  ldi r6, 2; // AF_INET
+  eq  r0, r1, r6;
+  jz  r0, #done;
+
+  ldc r6, localnet;
+  and r0, r4, r6;
+  eq  r0, r0, r6;
+
+#done:
+  ret r0;
+}
 
 @/ The filter structure
 
