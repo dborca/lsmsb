@@ -1892,9 +1892,9 @@ name in the list of supported filters</p>
   }
 
   token = [a-zA-Z\-_][0-9a-zA-Z\-_]*;
-  u32 = "0x"? . digit+;
+  u32 = ("0x" . xdigit+) | ("0" . [0-7]*) | ([1-9]digit*);
   constant_u32 = "u32" . ws . "=" . ws . (u32 >start %constant_u32) . ws;
-  bytestring_literal_hex = "x\"" . ([0-9a-fA-F]* >start %constant_bytestring_hex) . "\"" . ws;
+  bytestring_literal_hex = "x\"" . (xdigit* >start %constant_bytestring_hex) . "\"" . ws;
   bytestring_literal_string = "\"" . ((any - '"')* >start %constant_bytestring_string) . "\"" . ws;
   bytestring_literal = bytestring_literal_hex | bytestring_literal_string;
   constant_bytestring = "bytestring" . ws . "=" . ws . bytestring_literal;
