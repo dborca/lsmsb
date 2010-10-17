@@ -686,23 +686,23 @@ static char lsmsb_type_vector_array_fill(uint8_t *tva,
 </p>
 
 @<handle normal row@>=
-	for (j = 0; j < LSMSB_PREDECESSOR_TABLE_WIDTH; ++j) {
-		const unsigned p = ptable_row[j];
-		const uint8_t *tva_row_p = tva + p * tva_width;
-		if (p == LSMSB_PREDECESSOR_TABLE_INVAL)
-			break;
-		if (!found_predecessor) {
-			memcpy(tva_row, tva_row_p, tva_width);
-			found_predecessor = 1;
-			continue;
-		}
+			for (j = 0; j < LSMSB_PREDECESSOR_TABLE_WIDTH; ++j) {
+				const unsigned p = ptable_row[j];
+				const uint8_t *tva_row_p = tva + p * tva_width;
+				if (p == LSMSB_PREDECESSOR_TABLE_INVAL)
+					break;
+				if (!found_predecessor) {
+					memcpy(tva_row, tva_row_p, tva_width);
+					found_predecessor = 1;
+					continue;
+				}
 
-		lsmsb_type_vector_unify(tva_row, tva_row_p,
-					tva_width);
-	}
+				lsmsb_type_vector_unify(tva_row, tva_row_p,
+							tva_width);
+			}
 
-	if (!found_predecessor)
-		return 0;  // Dead code.
+			if (!found_predecessor)
+				return 0;  // Dead code.
 
 @/ Unifying overflow rows
 
@@ -714,25 +714,25 @@ static char lsmsb_type_vector_array_fill(uint8_t *tva,
 </p>
 
 @<handle overflowed row@>=
-	for (j = 0; j < i; ++j) {
-		if (lsmsb_op_is_predecessor_of(ops, j, i)) {
-			if (!found_predecessor) {
-				memcpy(tva_row,
-				       tva + j * tva_width,
-				       tva_width);
-				found_predecessor = 1;
-				continue;
+			for (j = 0; j < i; ++j) {
+				if (lsmsb_op_is_predecessor_of(ops, j, i)) {
+					if (!found_predecessor) {
+						memcpy(tva_row,
+						       tva + j * tva_width,
+						       tva_width);
+						found_predecessor = 1;
+						continue;
+					}
+
+					lsmsb_type_vector_unify(
+						tva_row,
+						tva + j * tva_width,
+						tva_width);
+				}
 			}
 
-			lsmsb_type_vector_unify(
-				tva_row,
-				tva + j * tva_width,
-				tva_width);
-		}
-	}
-
-	if (!found_predecessor)
-		return 0;  // shouldn't ever happen
+			if (!found_predecessor)
+				return 0;  // shouldn't ever happen
 
 @/ Testing for predecessor rules
 
