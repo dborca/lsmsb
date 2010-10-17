@@ -1876,7 +1876,7 @@ opened) and test that <tt>/etc/</tt> is a prefix of the path.</p>
 
 filter dentry-open {
   constants {
-    var etc-prefix bytestring = "/etc/";
+    etc-prefix = "/etc/";
   }
 
   ldc r2,etc-prefix;
@@ -1905,9 +1905,9 @@ filter socket-create {
 @{file example-sandbox4.sb
 filter socket-connect {
   constants {
-    var AF_UNIX u32 = 1;
-    var AF_INET u32 = 2;
-    var localnet u32 = 0x7F000000;
+    AF_UNIX = 1;
+    AF_INET = 2;
+    localnet = 0x7F000000;
   }
 
   ldc r6, AF_UNIX;
@@ -2127,13 +2127,11 @@ name in the list of supported filters</p>
 
   token = [a-zA-Z\-_][0-9a-zA-Z\-_]*;
   u32 = ("0x" . xdigit+) | ("0" . [0-7]*) | ([1-9]digit*);
-  constant_u32 = "u32" . ws . "=" . ws . (u32 >start %constant_u32) . ws;
-  bytestring_literal_hex = "x\"" . (xdigit* >start %constant_bytestring_hex) . "\"" . ws;
-  bytestring_literal_string = "\"" . ((any - '"')* >start %constant_bytestring_string) . "\"" . ws;
-  bytestring_literal = bytestring_literal_hex | bytestring_literal_string;
-  constant_bytestring = "bytestring" . ws . "=" . ws . bytestring_literal;
-  constant_type_and_value = constant_u32 | constant_bytestring;
-  constant = "var" . ws . (token >start %constant_new) . ws . constant_type_and_value . ws . ";" . ws;
+  constant_u32 = (u32 >start %constant_u32);
+  bytestring_literal_hex = "x\"" . (xdigit* >start %constant_bytestring_hex) . "\"";
+  bytestring_literal_string = "\"" . ((any - '"')* >start %constant_bytestring_string) . "\"";
+  constant_bytestring = bytestring_literal_hex | bytestring_literal_string;
+  constant = (token >start %constant_new) . ws . "=" . ws . (constant_u32 | constant_bytestring) . ws . ";" . ws;
   constants = "constants" . ws . "{" . ws . constant* . "}" . ws;
 
 @/ Helper functions
