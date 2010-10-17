@@ -78,7 +78,7 @@ authority.</p>
 struct lsmsb_sandbox {
         atomic_t refcount;
         struct lsmsb_sandbox *parent;
-        struct lsmsb_filter *dentry_open;
+        struct lsmsb_filter *filters[LSMSB_FILTER_CODE_MAX];
         // TODO: add support for more actions
 };
 
@@ -1367,11 +1367,11 @@ static int lsmsb_filter_install(struct lsmsb_sandbox *sandbox,
 
 	switch (filter_wire.filter_code) {
 	case LSMSB_FILTER_CODE_DENTRY_OPEN:
-		if (sandbox->dentry_open) {
+		if (sandbox->filters[filter_wire.filter_code]) {
 			return_code = -EINVAL;
 			goto error;
 		}
-		sandbox->dentry_open = filter;
+		sandbox->filters[filter_wire.filter_code] = filter;
 		break;
 	default:
 		return_code = -EINVAL;
@@ -1465,7 +1465,12 @@ static void lsmsb_filter_free(struct lsmsb_filter *filter)
 
 static void lsmsb_sandbox_free(struct lsmsb_sandbox *sandbox)
 {
-	lsmsb_filter_free(sandbox->dentry_open);
+	int i = LSMSB_FILTER_CODE_MAX;
+
+	while (--i > 0) {
+		lsmsb_filter_free(sandbox->filters[i]);
+	}
+
 	kfree(sandbox);
 }
 
@@ -1530,6 +1535,7 @@ of the filesystem.</p>
 static int lsmsb_dentry_open(struct file *f, const struct cred *cred)
 {
 	const struct lsmsb_sandbox *sandbox;
+	const struct lsmsb_filter *filter;
 	char buffer[512];
 	struct lsmsb_value registers[2];
 
@@ -1543,7 +1549,8 @@ static int lsmsb_dentry_open(struct file *f, const struct cred *cred)
 	sandbox = cred->security;
 
 	while (sandbox) {
-		if (sandbox->dentry_open)
+		filter = sandbox->filters[LSMSB_FILTER_CODE_DENTRY_OPEN];
+		if (filter)
 			break;
 		sandbox = sandbox->parent;
 	}
@@ -1575,9 +1582,10 @@ static int lsmsb_dentry_open(struct file *f, const struct cred *cred)
 	registers[1].value = f->f_flags;
 
 	while (sandbox) {
-		if (sandbox->dentry_open) {
-			if (!lsmsb_filter_run(sandbox->dentry_open,
-					      registers, 2)) {
+		filter = sandbox->filters[LSMSB_FILTER_CODE_DENTRY_OPEN];
+		if (filter) {
+			if (!lsmsb_filter_run(filter, registers,
+					      ARRAY_SIZE(registers))) {
 				return -EPERM;
 			}
 		}
@@ -1642,11 +1650,11 @@ security_initcall(lsmsb_init);
 
 @<Filter structure@>
 
+@<Filter codes@>
+
 @<Sandbox structure@>
 
 @<List of operations@>
-
-@<Filter codes@>
 
 @<Typechecking@>
 
@@ -2418,9 +2426,9 @@ void kfree(void* heap) { free(heap); }
 
 @<Filter structure@>
 
-@<List of operations@>
-
 @<Filter codes@>
+
+@<List of operations@>
 
 @<Typechecking@>
 
