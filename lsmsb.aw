@@ -1905,14 +1905,16 @@ filter socket-create {
 @{file example-sandbox4.sb
 filter socket-connect {
   constants {
+    var AF_UNIX u32 = 1;
+    var AF_INET u32 = 2;
     var localnet u32 = 0x7F000000;
   }
 
-  ldi r6, 1; // AF_UNIX
+  ldc r6, AF_UNIX;
   eq  r0, r1, r6;
   jnz r0, #done;
 
-  ldi r6, 2; // AF_INET
+  ldc r6, AF_INET;
   eq  r0, r1, r6;
   jz  r0, #done;
 
@@ -1938,6 +1940,7 @@ struct Filter {
   }
 
   @<lsmsb-as-filter-typecheck@>
+  @<lsmsb-as-filter-optimize-constants@>
   @<lsmsb-as-filter-write@>
 
   std::string name;  // the name of the filter (i.e. "dentry-open")
@@ -1959,7 +1962,7 @@ external format which the kernel expects.</p>
 @<lsmsb-as-constant|Constant classes@>=
 struct Constant {
   explicit Constant(const std::string &n)
-      : name(n) {
+      : name(n), gap(0), small(false), used(false) {
   }
 
   enum Type {
@@ -1968,6 +1971,9 @@ struct Constant {
   };
 
   const std::string name;
+  unsigned gap;
+  bool small;
+  bool used;
 
   virtual Type type() const = 0;
   virtual bool Write() const = 0;
@@ -2004,6 +2010,7 @@ struct U32 : public Constant {
   U32(const std::string &name, uint32_t v)
       : Constant(name),
         value(v) {
+    small = ((v & 0xfffff) == v);
   }
 
   Type type() const {
@@ -2304,6 +2311,7 @@ walk the vector till we find the correct index.</p>
 
     for (i = 0; i < current_filter->constants.size(); ++i) {
       if (current_filter->constants[i]->name == constant_name) {
+        current_filter->constants[i]->used = true;
         op |= i;
         break;
       }
@@ -2533,15 +2541,17 @@ below.</p>
 @/ Serialising a filter
 
 <p>We serialise a filter by filling out the <a href="@@cite:External structures@@">external structures</a> which the kernel expects and writing to
-<tt>stdout</tt>.</p>
+<tt>stdout</tt>. An optional optimization pass may be performed (see <a href="@@cite:lsmsb-as-filter-optimize-constants@@">below</a>).</p>
 
-@<lsmsb-as-filter-write|bool Filter::Write() const {...@>=
-  bool Write() const {
+@<lsmsb-as-filter-write|bool Filter::Write(bool optimize = true) {...@>=
+  bool Write(bool optimize = true) {
     struct lsmsb_filter_wire wire;
     wire.filter_code = filter_code;
     wire.num_operations = ops.size();
     wire.num_spill_slots = spill_slots;
     wire.num_constants = constants.size();
+    if (optimize)
+      wire.num_constants -= OptimizeConstants();
 
     if (!writea(1, &wire, sizeof(wire)) ||
         !writea(1, &ops[0], sizeof(uint32_t) * ops.size())) {
@@ -2550,11 +2560,59 @@ below.</p>
 
     for (std::vector<Constant*>::const_iterator
          i = constants.begin(); i != constants.end(); ++i) {
+      if (optimize && !(*i)->used)
+        continue;
       if (!(*i)->Write())
         return false;
     }
 
     return true;
+  }
+
+@/ Constant culling
+
+<p>While parsing the code, we kept track of which constants are actually referenced by the filter
+and here we disable those that are not used. Aditionally, we disable small numeric constants which
+fit into an immediate value, by converting <tt>ldc</tt> instructions to <tt>ldi</tt>.  The writer
+will only serialize remaining constants, so we have to adjust all instructions that reference them.
+Finally, we return the number of disabled constants, so the writer may adjust the structures.</p>
+
+@<lsmsb-as-filter-optimize-constants|unsigned Filter::OptimizeConstants() {...@>=
+  unsigned OptimizeConstants() {
+    unsigned i, j, k = 0;
+    for (i = 0; i < constants.size(); ++i) {
+      if (constants[i]->small) {
+        constants[i]->used = false;
+      }
+      if (!constants[i]->used) {
+        k++;
+      } else {
+        constants[i]->gap = k;
+      }
+    }
+    for (j = 0; j < ops.size(); ++j) {
+      uint32_t op = ops[j];
+      if (lsmsb_op_opcode_get(op) == LSMSB_OPCODE_LDC) {
+        unsigned gap, c1 = lsmsb_op_constant1_get(op);
+        if (!constants[c1]->used) {
+          // We get here because the used flag was cleared above.  It means the
+          // constant value is small enough to fit into an immediate.  We could
+          // have done this early, in set_const, and leave the constant unused.
+          uint32_t imm = ((U32 *)constants[c1])->value;
+          op &= ~0xFF00FFFF;
+          op |= (static_cast<uint32_t>(LSMSB_OPCODE_LDI) << 24) | imm;
+          ops[j] = op;
+          continue;
+        }
+        gap = constants[c1]->gap;
+        if (gap) {
+          op &= ~0xFF;
+          op |= c1 - gap;
+          ops[j] = op;
+        }
+      }
+    }
+    return k;
   }
 
 @/ The <tt>writea</tt> utility function
