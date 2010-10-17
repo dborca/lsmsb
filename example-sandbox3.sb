@@ -1,0 +1,5 @@
+filter socket-create {
+  ldi r4, 1; // AF_UNIX
+  eq  r0, r0, r4;
+  ret r0;
+}

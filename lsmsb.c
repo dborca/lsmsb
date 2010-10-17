@@ -4,6 +4,7 @@
 #include <linux/mount.h>
 #include <linux/mnt_namespace.h>
 #include <linux/fs_struct.h>
+#include <net/sock.h>
 #include <linux/uaccess.h>
 
 #include "lsmsb_external.h"
@@ -29,10 +30,17 @@ struct lsmsb_filter {
 #define LSMSB_CONSTANTS_MAX 256
 #define LSMSB_CONSTANT_LENGTH_MAX 512
 
+enum lsmsb_filter_code {
+	LSMSB_FILTER_CODE_DENTRY_OPEN = 0,
+	LSMSB_FILTER_CODE_SOCKET_CREATE,
+	LSMSB_FILTER_CODE_SOCKET_CONNECT,
+	LSMSB_FILTER_CODE_MAX,  // not a real filter code
+};
+
 struct lsmsb_sandbox {
         atomic_t refcount;
         struct lsmsb_sandbox *parent;
-        struct lsmsb_filter *dentry_open;
+        struct lsmsb_filter *filters[LSMSB_FILTER_CODE_MAX];
         // TODO: add support for more actions
 };
 
@@ -44,8 +52,10 @@ enum lsmsb_opcode {
 	LSMSB_OPCODE_JMP,
 	LSMSB_OPCODE_SPILL,
 	LSMSB_OPCODE_UNSPILL,
-	LSMSB_OPCODE_JC,
+	LSMSB_OPCODE_JNZ,
+	LSMSB_OPCODE_JZ,
 	LSMSB_OPCODE_EQ,
+	LSMSB_OPCODE_NE,
 	LSMSB_OPCODE_GT,
 	LSMSB_OPCODE_LT,
 	LSMSB_OPCODE_GTE,
@@ -54,11 +64,6 @@ enum lsmsb_opcode {
 	LSMSB_OPCODE_OR,
 	LSMSB_OPCODE_XOR,
 	LSMSB_OPCODE_ISPREFIXOF,
-};
-
-enum lsmsb_filter_code {
-	LSMSB_FILTER_CODE_DENTRY_OPEN = 0,
-	LSMSB_FILTER_CODE_MAX,  // not a real filter code
 };
 
 static inline enum lsmsb_opcode lsmsb_op_opcode_get(uint32_t op)
@@ -74,13 +79,17 @@ static inline char lsmsb_opcode_falls_through(enum lsmsb_opcode opcode)
 
 static inline unsigned lsmsb_opcode_is_jump(enum lsmsb_opcode opcode)
 {
-	return opcode == LSMSB_OPCODE_JMP || opcode == LSMSB_OPCODE_JC;
+	return opcode == LSMSB_OPCODE_JMP ||
+	       opcode == LSMSB_OPCODE_JNZ ||
+	       opcode == LSMSB_OPCODE_JZ;
 }
 
 static inline unsigned lsmsb_op_jump_length(uint32_t op)
 {
 	const unsigned opcode = op >> 24;
-	if (opcode == LSMSB_OPCODE_JMP || opcode == LSMSB_OPCODE_JC)
+	if (opcode == LSMSB_OPCODE_JMP ||
+	    opcode == LSMSB_OPCODE_JNZ ||
+	    opcode == LSMSB_OPCODE_JZ)
 		return op & 0xff;
 	return 0;
 }
@@ -344,12 +353,14 @@ static char lsmsb_op_type_vector_update(uint8_t *tv, uint32_t op,
 			return 0;
 		lsmsb_type_vector_reg_set(tv, reg1, type1);
 		return 1;
-	case LSMSB_OPCODE_JC:
+	case LSMSB_OPCODE_JNZ:
+	case LSMSB_OPCODE_JZ:
 		reg1 = lsmsb_op_reg1_get(op);
 		if (lsmsb_type_vector_reg_get(tv, reg1) != LSMSB_TYPE_U32)
 			return 0;
 		return 1;
 	case LSMSB_OPCODE_EQ:
+	case LSMSB_OPCODE_NE:
 	case LSMSB_OPCODE_GT:
 	case LSMSB_OPCODE_LT:
 	case LSMSB_OPCODE_GTE:
@@ -409,43 +420,43 @@ static char lsmsb_type_vector_array_fill(uint8_t *tva,
 		char found_predecessor = 0;
 
 		if (ptable_row[0] == LSMSB_PREDECESSOR_TABLE_OVERFLOW) {
-	for (j = 0; j < i; ++j) {
-		if (lsmsb_op_is_predecessor_of(ops, j, i)) {
-			if (!found_predecessor) {
-				memcpy(tva_row,
-				       tva + j * tva_width,
-				       tva_width);
-				found_predecessor = 1;
-				continue;
+			for (j = 0; j < i; ++j) {
+				if (lsmsb_op_is_predecessor_of(ops, j, i)) {
+					if (!found_predecessor) {
+						memcpy(tva_row,
+						       tva + j * tva_width,
+						       tva_width);
+						found_predecessor = 1;
+						continue;
+					}
+
+					lsmsb_type_vector_unify(
+						tva_row,
+						tva + j * tva_width,
+						tva_width);
+				}
 			}
 
-			lsmsb_type_vector_unify(
-				tva_row,
-				tva + j * tva_width,
-				tva_width);
-		}
-	}
-
-	if (!found_predecessor)
-		return 0;  // shouldn't ever happen
+			if (!found_predecessor)
+				return 0;  // shouldn't ever happen
 		} else {
-	for (j = 0; j < LSMSB_PREDECESSOR_TABLE_WIDTH; ++j) {
-		const unsigned p = ptable_row[j];
-		const uint8_t *tva_row_p = tva + p * tva_width;
-		if (p == LSMSB_PREDECESSOR_TABLE_INVAL)
-			break;
-		if (!found_predecessor) {
-			memcpy(tva_row, tva_row_p, tva_width);
-			found_predecessor = 1;
-			continue;
-		}
+			for (j = 0; j < LSMSB_PREDECESSOR_TABLE_WIDTH; ++j) {
+				const unsigned p = ptable_row[j];
+				const uint8_t *tva_row_p = tva + p * tva_width;
+				if (p == LSMSB_PREDECESSOR_TABLE_INVAL)
+					break;
+				if (!found_predecessor) {
+					memcpy(tva_row, tva_row_p, tva_width);
+					found_predecessor = 1;
+					continue;
+				}
 
-		lsmsb_type_vector_unify(tva_row, tva_row_p,
-					tva_width);
-	}
+				lsmsb_type_vector_unify(tva_row, tva_row_p,
+							tva_width);
+			}
 
-	if (!found_predecessor)
-		return 0;  // Dead code.
+			if (!found_predecessor)
+				return 0;  // Dead code.
 		}
 
 		if (!lsmsb_op_type_vector_update(tva_row, ops[i],
@@ -466,6 +477,8 @@ struct filter_context {
 
 const struct filter_context filter_contexts[] = {
   {"dentry-open", "BI"}, // LSMSB_FILTER_CODE_DENTRY_OPEN
+  {"socket-create", "IIII"}, // LSMSB_FILTER_CODE_SOCKET_CREATE
+  {"socket-connect", "IIIIIB"}, // LSMSB_FILTER_CODE_SOCKET_CONNECT
   {NULL, NULL}
 };
 
@@ -603,9 +616,16 @@ char lsmsb_filter_run(const struct lsmsb_filter *filter,
 			memcpy(&regs[reg1], &spills[s1],
 			       sizeof(struct lsmsb_value));
 			break;
-		case LSMSB_OPCODE_JC:
+		case LSMSB_OPCODE_JNZ:
 			reg1 = lsmsb_op_reg1_get(op);
 			if (regs[reg1].value) {
+				ip--;
+				ip += lsmsb_op_jump_length(op);
+			}
+			break;
+		case LSMSB_OPCODE_JZ:
+			reg1 = lsmsb_op_reg1_get(op);
+			if (!regs[reg1].value) {
 				ip--;
 				ip += lsmsb_op_jump_length(op);
 			}
@@ -615,6 +635,12 @@ char lsmsb_filter_run(const struct lsmsb_filter *filter,
 			reg2 = lsmsb_op_reg2_get(op);
 			reg3 = lsmsb_op_reg3_get(op);
 			regs[reg1].value = regs[reg2].value == regs[reg3].value;
+			break;
+		case LSMSB_OPCODE_NE:
+			reg1 = lsmsb_op_reg1_get(op);
+			reg2 = lsmsb_op_reg2_get(op);
+			reg3 = lsmsb_op_reg3_get(op);
+			regs[reg1].value = regs[reg2].value != regs[reg3].value;
 			break;
 		case LSMSB_OPCODE_GT:
 			reg1 = lsmsb_op_reg1_get(op);
@@ -686,12 +712,11 @@ char lsmsb_filter_run(const struct lsmsb_filter *filter,
 }
 
 static int lsmsb_constant_install(struct lsmsb_value *value,
-				  const char __user **buf)
+				  const char **buf)
 {
 	struct lsmsb_constant_wire constant_wire;
 
-	if (copy_from_user(&constant_wire, *buf, sizeof(constant_wire)))
-		return -EFAULT;
+	memcpy(&constant_wire, *buf, sizeof(constant_wire));
 	if (constant_wire.type > 1)
 		return -EINVAL;
 	*buf += sizeof(constant_wire);
@@ -705,10 +730,7 @@ static int lsmsb_constant_install(struct lsmsb_value *value,
 	value->data = kmalloc(value->value, GFP_KERNEL);
 	if (!value->data)
 		return -ENOMEM;
-	if (copy_from_user(value->data, *buf, value->value)) {
-		kfree(value->data);
-		return -EFAULT;
-	}
+	memcpy(value->data, *buf, value->value);
 	*buf += value->value;
 
 	return 0;
@@ -731,7 +753,12 @@ static void lsmsb_filter_free(struct lsmsb_filter *filter)
 
 static void lsmsb_sandbox_free(struct lsmsb_sandbox *sandbox)
 {
-	lsmsb_filter_free(sandbox->dentry_open);
+	int i = LSMSB_FILTER_CODE_MAX;
+
+	while (--i > 0) {
+		lsmsb_filter_free(sandbox->filters[i]);
+	}
+
 	kfree(sandbox);
 }
 
@@ -761,7 +788,7 @@ static void lsmsb_cred_free(struct cred *cred)
 }
 
 static int lsmsb_filter_install(struct lsmsb_sandbox *sandbox,
-				const char __user **buf)
+				const char **buf)
 {
 	struct lsmsb_filter_wire filter_wire;
 	struct lsmsb_filter *filter;
@@ -769,8 +796,7 @@ static int lsmsb_filter_install(struct lsmsb_sandbox *sandbox,
 	int return_code = -ENOMEM;
 	uint8_t *type_vector;
 
-	if (copy_from_user(&filter_wire, *buf, sizeof(filter_wire)))
-		return -EFAULT;
+	memcpy(&filter_wire, *buf, sizeof(filter_wire));
 
 	if (filter_wire.num_operations > LSMSB_FILTER_OPS_MAX ||
 	    filter_wire.num_spill_slots > LSMSB_SPILL_SLOTS_MAX ||
@@ -796,11 +822,8 @@ static int lsmsb_filter_install(struct lsmsb_sandbox *sandbox,
 				     GFP_KERNEL);
 	if (!filter->operations)
 		goto error;
-	if (copy_from_user(filter->operations, *buf,
-			   filter->num_operations * sizeof(uint32_t))) {
-		return_code = -EFAULT;
-		goto error;
-	}
+	memcpy(filter->operations, *buf,
+			   filter->num_operations * sizeof(uint32_t));
 	*buf += filter->num_operations * sizeof(uint32_t);
 
 	for (i = 0; i < filter_wire.num_constants; ++i) {
@@ -823,11 +846,13 @@ static int lsmsb_filter_install(struct lsmsb_sandbox *sandbox,
 
 	switch (filter_wire.filter_code) {
 	case LSMSB_FILTER_CODE_DENTRY_OPEN:
-		if (sandbox->dentry_open) {
+	case LSMSB_FILTER_CODE_SOCKET_CREATE:
+	case LSMSB_FILTER_CODE_SOCKET_CONNECT:
+		if (sandbox->filters[filter_wire.filter_code]) {
 			return_code = -EINVAL;
 			goto error;
 		}
-		sandbox->dentry_open = filter;
+		sandbox->filters[filter_wire.filter_code] = filter;
 		break;
 	default:
 		return_code = -EINVAL;
@@ -843,9 +868,8 @@ error:
 
 #define LSMSB_MAX_SANDBOXES_PER_PROCESS 16
 
-int lsmsb_sandbox_install(struct task_struct *task,
-			  const char __user *buf,
-			  size_t len)
+static int lsmsb_sandbox_install(struct task_struct *task,
+				 const char *buf, size_t len)
 {
 	uint32_t num_filters;
 	struct lsmsb_sandbox *sandbox, *current_sandbox;
@@ -858,8 +882,7 @@ int lsmsb_sandbox_install(struct task_struct *task,
 	if (i > LSMSB_MAX_SANDBOXES_PER_PROCESS)
 		return -ENOSPC;
 
-	if (copy_from_user(&num_filters, buf, sizeof(num_filters)))
-		return -EFAULT;
+	memcpy(&num_filters, buf, sizeof(num_filters));
 	buf += sizeof(num_filters);
 	if (num_filters > 1 /* FIXME */)
 		return -EINVAL;
@@ -895,9 +918,53 @@ error:
 	return return_code;
 }
 
+static int lsmsb_getprocattr(struct task_struct *p, char *name, char **value)
+{
+	char *cp;
+	int slen;
+
+	if (strcmp(name, "current") != 0)
+		return -EINVAL;
+
+	cp = kstrdup("+", GFP_KERNEL);
+	if (cp == NULL)
+		return -ENOMEM;
+
+	slen = strlen(cp);
+	*value = cp;
+	return slen;
+}
+
+static int lsmsb_setprocattr(struct task_struct *p, char *name,
+			     void *value, size_t size)
+{
+	int rv;
+
+	if (p != current)
+		return -EPERM;
+
+	if (!capable(CAP_MAC_ADMIN))
+		return -EPERM;
+
+	if (value == NULL || size == 0)
+		return -EINVAL;
+
+	if (strcmp(name, "current") != 0)
+		return -EINVAL;
+
+	rv = lsmsb_sandbox_install(p, value, size);
+	if (rv) {
+		printk(KERN_ERR "bad sandbox\n");
+		return rv;
+	}
+
+	return size;
+}
+
 static int lsmsb_dentry_open(struct file *f, const struct cred *cred)
 {
 	const struct lsmsb_sandbox *sandbox;
+	const struct lsmsb_filter *filter;
 	char buffer[512];
 	struct lsmsb_value registers[2];
 
@@ -911,7 +978,8 @@ static int lsmsb_dentry_open(struct file *f, const struct cred *cred)
 	sandbox = cred->security;
 
 	while (sandbox) {
-		if (sandbox->dentry_open)
+		filter = sandbox->filters[LSMSB_FILTER_CODE_DENTRY_OPEN];
+		if (filter)
 			break;
 		sandbox = sandbox->parent;
 	}
@@ -943,9 +1011,115 @@ static int lsmsb_dentry_open(struct file *f, const struct cred *cred)
 	registers[1].value = f->f_flags;
 
 	while (sandbox) {
-		if (sandbox->dentry_open) {
-			if (!lsmsb_filter_run(sandbox->dentry_open,
-					      registers, 2)) {
+		filter = sandbox->filters[LSMSB_FILTER_CODE_DENTRY_OPEN];
+		if (filter) {
+			if (!lsmsb_filter_run(filter, registers,
+					      ARRAY_SIZE(registers))) {
+				return -EPERM;
+			}
+		}
+
+		sandbox = sandbox->parent;
+	}
+
+	return 0;
+}
+
+static int lsmsb_socket_create(int family, int type, int protocol, int kern)
+{
+	const struct cred *cred = current_cred();
+	const struct lsmsb_sandbox *sandbox;
+	const struct lsmsb_filter *filter;
+	struct lsmsb_value registers[4];
+
+	if (!cred->security)
+		return 0;
+	sandbox = cred->security;
+
+	while (sandbox) {
+		filter = sandbox->filters[LSMSB_FILTER_CODE_SOCKET_CREATE];
+		if (filter)
+			break;
+		sandbox = sandbox->parent;
+	}
+
+	if (!sandbox)
+		return 0;
+
+	registers[0].data = NULL;
+	registers[0].value = family;
+	registers[1].data = NULL;
+	registers[1].value = type;
+	registers[2].data = NULL;
+	registers[2].value = protocol;
+	registers[3].data = NULL;
+	registers[3].value = kern;
+
+	while (sandbox) {
+		filter = sandbox->filters[LSMSB_FILTER_CODE_SOCKET_CREATE];
+		if (filter) {
+			if (!lsmsb_filter_run(filter, registers,
+					      ARRAY_SIZE(registers))) {
+				return -EPERM;
+			}
+		}
+
+		sandbox = sandbox->parent;
+	}
+
+	return 0;
+}
+
+static int lsmsb_socket_connect(struct socket *sock,
+				struct sockaddr *address, int addrlen)
+{
+	const struct cred *cred = current_cred();
+	const struct lsmsb_sandbox *sandbox;
+	const struct lsmsb_filter *filter;
+	struct lsmsb_value registers[6];
+	const struct sock *sk = sock->sk;
+
+	if (!cred->security)
+		return 0;
+	sandbox = cred->security;
+
+	while (sandbox) {
+		filter = sandbox->filters[LSMSB_FILTER_CODE_SOCKET_CONNECT];
+		if (filter)
+			break;
+		sandbox = sandbox->parent;
+	}
+
+	if (!sandbox)
+		return 0;
+	
+	if (!sk)
+		return 0;
+	registers[0].data = NULL;
+	registers[0].value = sk->sk_family;
+	registers[1].data = NULL;
+	registers[1].value = sock->type;
+	registers[2].data = NULL;
+	registers[2].value = sk->sk_protocol;
+	registers[3].data = NULL;
+	registers[3].value = 0;
+	registers[4].data = NULL;
+	registers[4].value = 0;
+	if (sk->sk_family == AF_INET) {
+		struct sockaddr_in *addr4 = (struct sockaddr_in *)address;
+		if (addrlen < sizeof(struct sockaddr_in))
+			return -EINVAL;
+		registers[3].value = ntohs(addr4->sin_port);
+		registers[4].value = ntohl(addr4->sin_addr.s_addr);
+	}
+	registers[5].data = "";
+	registers[5].value = 0;
+
+	while (sandbox) {
+		filter = sandbox->filters[LSMSB_FILTER_CODE_SOCKET_CONNECT];
+		if (filter) {
+			if (!lsmsb_filter_run(filter, registers,
+					      ARRAY_SIZE(registers))) {
 				return -EPERM;
 			}
 		}
@@ -958,7 +1132,11 @@ static int lsmsb_dentry_open(struct file *f, const struct cred *cred)
 
 struct security_operations lsmsb_ops = {
 	.name   	= "lsmsb",
+	.setprocattr    = lsmsb_setprocattr,
+	.getprocattr    = lsmsb_getprocattr,
 	.dentry_open    = lsmsb_dentry_open,
+	.socket_create  = lsmsb_socket_create,
+	.socket_connect = lsmsb_socket_connect,
 	.cred_prepare   = lsmsb_cred_prepare,
 	.cred_free      = lsmsb_cred_free,
 };

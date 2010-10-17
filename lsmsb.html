@@ -10,9 +10,9 @@
     <h1>LSMSB: A Linux Sandboxing Scheme</h1>
 
 <p>Adam Langley (<tt>agl@google.com</tt>)<br>
-Version <tt>20090606</tt></p>
+Version <tt>20101017</tt> - Daniel Borca (<tt>dborca@yahoo.com</tt>)</p>
 
-<ol class="toc"><li><a href="#section-1">Kernel code</a><ol class="toc"><li><a href="#section-6">Typechecking.</a></li><li><a href="#section-21">Evaluating filters</a></li><li><a href="#section-27">Installing the sandbox</a></li><li><a href="#section-32">Interfacing with LSM</a></li></ol></li><li><a href="#section-40">The assembler</a><ol class="toc"><li><a href="#section-46">Parsing</a></li></ol></li><li><a href="#section-71">Using a sandbox</a></li></ol>
+<ol class="toc"><li><a href="#section-1">Kernel code</a><ol class="toc"><li><a href="#section-6">Typechecking.</a></li><li><a href="#section-21">Evaluating filters</a></li><li><a href="#section-27">Installing the sandbox</a></li><li><a href="#section-32">Interfacing with LSM</a></li></ol></li><li><a href="#section-42">The assembler</a><ol class="toc"><li><a href="#section-50">Parsing</a></li></ol></li><li><a href="#section-76">Using a sandbox</a></li></ol>
 
 <p>This is LSMSB, a sandboxing scheme for Linux based on the ideas of the <a
 href="http://www.318.com/techjournal/security/a-brief-introduction-to-mac-os-x-sandbox-technology/">
@@ -81,12 +81,12 @@ authority.</p>
 <div class="codeline"><span class="keyword">struct</span> lsmsb_sandbox {</div>
 <div class="codeline">        atomic_t refcount;</div>
 <div class="codeline">        <span class="keyword">struct</span> lsmsb_sandbox *parent;</div>
-<div class="codeline">        <span class="keyword">struct</span> lsmsb_filter *dentry_open;</div>
+<div class="codeline">        <span class="keyword">struct</span> lsmsb_filter *filters[LSMSB_FILTER_CODE_MAX];</div>
 <div class="codeline">        <span class="comment">// TODO: add support for more actions</span></div>
 <div class="codeline">};</div>
       </div>
       <div class="sectionrefs">
-<a class="fileref" href="#section-38">lsmsb.c</a> 
+<a class="fileref" href="#section-40">lsmsb.c</a> 
     </div>
     <a name="section-2"></a>
     <div class="section" id="section-2">
@@ -141,8 +141,8 @@ read and written explicitly.</p>
 <div class="codeline"><span class="preprocessor">#define LSMSB_CONSTANT_LENGTH_MAX 512</span></div>
       </div>
       <div class="sectionrefs">
-<a class="fileref" href="#section-38">lsmsb.c</a> 
-<a class="fileref" href="#section-70">lsmsb-as.rl</a> 
+<a class="fileref" href="#section-40">lsmsb.c</a> 
+<a class="fileref" href="#section-75">lsmsb-as.rl</a> 
     </div>
     <a name="section-3"></a>
     <div class="section" id="section-3">
@@ -169,8 +169,8 @@ Filter values</p>
 <div class="codeline">};</div>
       </div>
       <div class="sectionrefs">
-<a class="fileref" href="#section-38">lsmsb.c</a> 
-<a class="fileref" href="#section-70">lsmsb-as.rl</a> 
+<a class="fileref" href="#section-40">lsmsb.c</a> 
+<a class="fileref" href="#section-75">lsmsb-as.rl</a> 
     </div>
     <a name="section-4"></a>
     <div class="section" id="section-4">
@@ -198,8 +198,10 @@ Operations</p>
   <tr><td><tt>JMP</tt></td> <td>Jump</td> <td>Skips the next <i>n</i> rules</td></tr>
   <tr><td><tt>SPILL</tt></td> <td>Spill register</td> <td>spill<sub>1</sub> = reg<sub>1</sub></td></tr>
   <tr><td><tt>UNSPILL</tt></td> <td>Unspill register</td> <td>reg<sub>1</sub> = spill<sub>1</sub></td></tr>
-  <tr><td><tt>JC</tt></td> <td>Jump conditionally</td> <td>If reg<sub>1</sub> &gt; 0 then skip the next <i>n</i> rules</td></tr>
+  <tr><td><tt>JNZ</tt></td> <td>Jump conditionally</td> <td>If reg<sub>1</sub> != 0 then skip the next <i>n</i> rules</td></tr>
+  <tr><td><tt>JZ</tt></td> <td>Jump conditionally</td> <td>If reg<sub>1</sub> == 0 then skip the next <i>n</i> rules</td></tr>
   <tr><td><tt>EQ</tt></td> <td>Equal?</td> <td>reg<sub>1</sub> = reg<sub>2</sub> == reg<sub>3</sub></td></tr>
+  <tr><td><tt>NE</tt></td> <td>Not equal?</td> <td>reg<sub>1</sub> = reg<sub>2</sub> != reg<sub>3</sub></td></tr>
   <tr><td><tt>GT</tt></td> <td>Greater than?</td> <td>reg<sub>1</sub> = reg<sub>2</sub> &gt; reg<sub>3</sub></td></tr>
   <tr><td><tt>LT</tt></td> <td>Less than?</td> <td>reg<sub>1</sub> = reg<sub>2</sub> &lt; reg<sub>3</sub></td></tr>
   <tr><td><tt>GTE</tt></td> <td>Greater than or equal?</td> <td>reg<sub>1</sub> = reg<sub>2</sub> &gt;= reg<sub>3</sub></td></tr>
@@ -220,8 +222,10 @@ Operations</p>
 <div class="codeline">        LSMSB_OPCODE_JMP,</div>
 <div class="codeline">        LSMSB_OPCODE_SPILL,</div>
 <div class="codeline">        LSMSB_OPCODE_UNSPILL,</div>
-<div class="codeline">        LSMSB_OPCODE_JC,</div>
+<div class="codeline">        LSMSB_OPCODE_JNZ,</div>
+<div class="codeline">        LSMSB_OPCODE_JZ,</div>
 <div class="codeline">        LSMSB_OPCODE_EQ,</div>
+<div class="codeline">        LSMSB_OPCODE_NE,</div>
 <div class="codeline">        LSMSB_OPCODE_GT,</div>
 <div class="codeline">        LSMSB_OPCODE_LT,</div>
 <div class="codeline">        LSMSB_OPCODE_GTE,</div>
@@ -233,8 +237,8 @@ Operations</p>
 <div class="codeline">};</div>
       </div>
       <div class="sectionrefs">
-<a class="fileref" href="#section-38">lsmsb.c</a> 
-<a class="fileref" href="#section-70">lsmsb-as.rl</a> 
+<a class="fileref" href="#section-40">lsmsb.c</a> 
+<a class="fileref" href="#section-75">lsmsb-as.rl</a> 
     </div>
     <a name="section-5"></a>
     <div class="section" id="section-5">
@@ -248,18 +252,22 @@ well as the context that it runs in. (See <a href="#section-2">above</a>). Here 
   <tr><th>Name</th> <th>Explanation</th> <th>Arguments</th></tr>
 
   <tr><td><tt>DENTRY_OPEN</tt></td> <td>File open</td> <td>Filename(<i>bs</i>) and mode(<i>i</i>)</td></tr>
+  <tr><td><tt>SOCKET_CREATE</tt></td> <td>Create socket</td> <td>Family(<i>i</i>), type(<i>i</i>), protocol(<i>i</i>) and kern(<i>i</i>)</td></tr>
+  <tr><td><tt>SOCKET_CONNECT</tt></td> <td>Connect socket</td> <td>Family(<i>i</i>), type(<i>i</i>), protocol(<i>i</i>), port(<i>i</i>), ipv4(<i>i</i>) and data(<i>bs</i>)</td></tr>
 </table>
 
       <div class="codename">Filter codes</div>
       <div class="code">
 <div class="codeline"><span class="keyword">enum</span> lsmsb_filter_code {</div>
 <div class="codeline">        LSMSB_FILTER_CODE_DENTRY_OPEN = 0,</div>
+<div class="codeline">        LSMSB_FILTER_CODE_SOCKET_CREATE,</div>
+<div class="codeline">        LSMSB_FILTER_CODE_SOCKET_CONNECT,</div>
 <div class="codeline">        LSMSB_FILTER_CODE_MAX,  <span class="comment">// not a real filter code</span></div>
 <div class="codeline">};</div>
       </div>
       <div class="sectionrefs">
-<a class="fileref" href="#section-38">lsmsb.c</a> 
-<a class="fileref" href="#section-70">lsmsb-as.rl</a> 
+<a class="fileref" href="#section-40">lsmsb.c</a> 
+<a class="fileref" href="#section-75">lsmsb-as.rl</a> 
     </div>
     <a name="section-6"></a>
     <div class="section" id="section-6">
@@ -281,8 +289,8 @@ well as the context that it runs in. (See <a href="#section-2">above</a>). Here 
     <div class="ref"><span class="reftext">Typecheck function</span> <a href="#section-20" class="refnum">20</a></div>
       </div>
       <div class="sectionrefs">
-<a class="fileref" href="#section-38">lsmsb.c</a> 
-<a class="fileref" href="#section-70">lsmsb-as.rl</a> 
+<a class="fileref" href="#section-40">lsmsb.c</a> 
+<a class="fileref" href="#section-75">lsmsb-as.rl</a> 
     </div>
     <a name="section-7"></a>
     <div class="section" id="section-7">
@@ -669,12 +677,14 @@ Updating the type vectors for an operation</p>
 <div class="codeline">                        return 0;</div>
 <div class="codeline">                lsmsb_type_vector_reg_set(tv, reg1, type1);</div>
 <div class="codeline">                return 1;</div>
-<div class="codeline">        <span class="keyword">case</span> LSMSB_OPCODE_JC:</div>
+<div class="codeline">        <span class="keyword">case</span> LSMSB_OPCODE_JNZ:</div>
+<div class="codeline">        <span class="keyword">case</span> LSMSB_OPCODE_JZ:</div>
 <div class="codeline">                reg1 = lsmsb_op_reg1_get(op);</div>
 <div class="codeline">                <span class="keyword">if</span> (lsmsb_type_vector_reg_get(tv, reg1) != LSMSB_TYPE_U32)</div>
 <div class="codeline">                        return 0;</div>
 <div class="codeline">                return 1;</div>
 <div class="codeline">        <span class="keyword">case</span> LSMSB_OPCODE_EQ:</div>
+<div class="codeline">        <span class="keyword">case</span> LSMSB_OPCODE_NE:</div>
 <div class="codeline">        <span class="keyword">case</span> LSMSB_OPCODE_GT:</div>
 <div class="codeline">        <span class="keyword">case</span> LSMSB_OPCODE_LT:</div>
 <div class="codeline">        <span class="keyword">case</span> LSMSB_OPCODE_GTE:</div>
@@ -1094,9 +1104,16 @@ works.</p>
 <div class="codeline">                        memcpy(&amp;regs[reg1], &amp;spills[s1],</div>
 <div class="codeline">                               sizeof(<span class="keyword">struct</span> lsmsb_value));</div>
 <div class="codeline">                        break;</div>
-<div class="codeline">                <span class="keyword">case</span> LSMSB_OPCODE_JC:</div>
+<div class="codeline">                <span class="keyword">case</span> LSMSB_OPCODE_JNZ:</div>
 <div class="codeline">                        reg1 = lsmsb_op_reg1_get(op);</div>
 <div class="codeline">                        <span class="keyword">if</span> (regs[reg1].value) {</div>
+<div class="codeline">                                ip--;</div>
+<div class="codeline">                                ip += lsmsb_op_jump_length(op);</div>
+<div class="codeline">                        }</div>
+<div class="codeline">                        break;</div>
+<div class="codeline">                <span class="keyword">case</span> LSMSB_OPCODE_JZ:</div>
+<div class="codeline">                        reg1 = lsmsb_op_reg1_get(op);</div>
+<div class="codeline">                        <span class="keyword">if</span> (!regs[reg1].value) {</div>
 <div class="codeline">                                ip--;</div>
 <div class="codeline">                                ip += lsmsb_op_jump_length(op);</div>
 <div class="codeline">                        }</div>
@@ -1106,6 +1123,12 @@ works.</p>
 <div class="codeline">                        reg2 = lsmsb_op_reg2_get(op);</div>
 <div class="codeline">                        reg3 = lsmsb_op_reg3_get(op);</div>
 <div class="codeline">                        regs[reg1].value = regs[reg2].value == regs[reg3].value;</div>
+<div class="codeline">                        break;</div>
+<div class="codeline">                <span class="keyword">case</span> LSMSB_OPCODE_NE:</div>
+<div class="codeline">                        reg1 = lsmsb_op_reg1_get(op);</div>
+<div class="codeline">                        reg2 = lsmsb_op_reg2_get(op);</div>
+<div class="codeline">                        reg3 = lsmsb_op_reg3_get(op);</div>
+<div class="codeline">                        regs[reg1].value = regs[reg2].value != regs[reg3].value;</div>
 <div class="codeline">                        break;</div>
 <div class="codeline">                <span class="keyword">case</span> LSMSB_OPCODE_GT:</div>
 <div class="codeline">                        reg1 = lsmsb_op_reg1_get(op);</div>
@@ -1179,7 +1202,7 @@ works.</p>
 <div class="codeline">}</div>
       </div>
       <div class="sectionrefs">
-<a class="fileref" href="#section-38">lsmsb.c</a> 
+<a class="fileref" href="#section-40">lsmsb.c</a> 
     </div>
     <a name="section-22"></a>
     <div class="section" id="section-22">
@@ -1207,14 +1230,18 @@ Utility functions</p>
 </pre>
 <div class="codeline"><span class="keyword">static</span> <span class="keyword">inline</span> <span class="keyword">unsigned</span> lsmsb_opcode_is_jump(<span class="keyword">enum</span> lsmsb_opcode opcode)</div>
 <div class="codeline">{</div>
-<div class="codeline">        return opcode == LSMSB_OPCODE_JMP || opcode == LSMSB_OPCODE_JC;</div>
+<div class="codeline">        return opcode == LSMSB_OPCODE_JMP ||</div>
+<div class="codeline">               opcode == LSMSB_OPCODE_JNZ ||</div>
+<div class="codeline">               opcode == LSMSB_OPCODE_JZ;</div>
 <div class="codeline">}</div>
 <pre>
 </pre>
 <div class="codeline"><span class="keyword">static</span> <span class="keyword">inline</span> <span class="keyword">unsigned</span> lsmsb_op_jump_length(<span class="keyword">uint32_t</span> op)</div>
 <div class="codeline">{</div>
 <div class="codeline">        <span class="keyword">const</span> <span class="keyword">unsigned</span> opcode = op &gt;&gt; 24;</div>
-<div class="codeline">        <span class="keyword">if</span> (opcode == LSMSB_OPCODE_JMP || opcode == LSMSB_OPCODE_JC)</div>
+<div class="codeline">        <span class="keyword">if</span> (opcode == LSMSB_OPCODE_JMP ||</div>
+<div class="codeline">            opcode == LSMSB_OPCODE_JNZ ||</div>
+<div class="codeline">            opcode == LSMSB_OPCODE_JZ)</div>
 <div class="codeline">                return op &amp; 0xff;</div>
 <div class="codeline">        return 0;</div>
 <div class="codeline">}</div>
@@ -1291,6 +1318,8 @@ In order to perform typechecking we need to duplicate that information
 </pre>
 <div class="codeline"><span class="keyword">const</span> <span class="keyword">struct</span> filter_context filter_contexts[] = {</div>
 <div class="codeline">  {<span class="string">"dentry-open"</span>, <span class="string">"BI"</span>}, <span class="comment">// LSMSB_FILTER_CODE_DENTRY_OPEN</span></div>
+<div class="codeline">  {<span class="string">"socket-create"</span>, <span class="string">"IIII"</span>}, <span class="comment">// LSMSB_FILTER_CODE_SOCKET_CREATE</span></div>
+<div class="codeline">  {<span class="string">"socket-connect"</span>, <span class="string">"IIIIIB"</span>}, <span class="comment">// LSMSB_FILTER_CODE_SOCKET_CONNECT</span></div>
 <div class="codeline">  {NULL, NULL}</div>
 <div class="codeline">};</div>
       </div>
@@ -1346,7 +1375,7 @@ Installing sandboxes.</p>
 <p>
   A sandbox is installed from userspace by writing a compact representation of
   a set of filters to the kernel. Currently, the userspace process does this by
-  writing to <tt>/proc/self/sandbox</tt>, although that could change in future
+  writing to <tt>/proc/self/attr/current</tt>, although that could change in future
   versions.
 </p>
 
@@ -1358,7 +1387,7 @@ Installing sandboxes.</p>
     <div class="ref"><span class="reftext">Installing a sandbox</span> <a href="#section-27" class="refnum">27</a></div>
       </div>
       <div class="sectionrefs">
-<a class="fileref" href="#section-38">lsmsb.c</a> 
+<a class="fileref" href="#section-40">lsmsb.c</a> 
     </div>
     <a name="section-26"></a>
     <div class="section" id="section-26">
@@ -1382,14 +1411,14 @@ External structures</p>
 <pre>
 </pre>
 <div class="codeline"><span class="keyword">struct</span> lsmsb_constant_wire {</div>
-<div class="codeline">        <span class="keyword">uint8_t</span> type;  <span class="comment">// 0 for integer, 1 for bytestring</span></div>
+<div class="codeline">        <span class="keyword">uint32_t</span> type;  <span class="comment">// 0 for integer, 1 for bytestring</span></div>
 <div class="codeline">        <span class="keyword">uint32_t</span> value;</div>
 <div class="codeline">        /* In the <span class="keyword">case</span> of a bytestring, the bytes follow and |value| is the length */</div>
 <div class="codeline">};</div>
       </div>
       <div class="sectionrefs">
-<a class="fileref" href="#section-39">lsmsb_external.h</a> 
-<a class="fileref" href="#section-70">lsmsb-as.rl</a> 
+<a class="fileref" href="#section-41">lsmsb_external.h</a> 
+<a class="fileref" href="#section-75">lsmsb-as.rl</a> 
     </div>
     <a name="section-27"></a>
     <div class="section" id="section-27">
@@ -1413,9 +1442,8 @@ External structures</p>
 <div class="codeline"><span class="preprocessor">#define LSMSB_MAX_SANDBOXES_PER_PROCESS 16</span></div>
 <pre>
 </pre>
-<div class="codeline"><span class="keyword">int</span> lsmsb_sandbox_install(<span class="keyword">struct</span> task_<span class="keyword">struct</span> *task,</div>
-<div class="codeline">                          <span class="keyword">const</span> <span class="keyword">char</span> __user *buf,</div>
-<div class="codeline">                          size_t len)</div>
+<div class="codeline"><span class="keyword">static</span> <span class="keyword">int</span> lsmsb_sandbox_install(<span class="keyword">struct</span> task_<span class="keyword">struct</span> *task,</div>
+<div class="codeline">                                 <span class="keyword">const</span> <span class="keyword">char</span> *buf, size_t len)</div>
 <div class="codeline">{</div>
 <div class="codeline">        <span class="keyword">uint32_t</span> num_filters;</div>
 <div class="codeline">        <span class="keyword">struct</span> lsmsb_sandbox *sandbox, *current_sandbox;</div>
@@ -1427,8 +1455,7 @@ External structures</p>
     <div class="ref">        <span class="reftext">Check for limits on the number of sandboxes</span> <a href="#section-29" class="refnum">29</a></div>
 <pre>
 </pre>
-<div class="codeline">        <span class="keyword">if</span> (copy_from_user(&amp;num_filters, buf, sizeof(num_filters)))</div>
-<div class="codeline">                return -EFAULT;</div>
+<div class="codeline">        memcpy(&amp;num_filters, buf, sizeof(num_filters));</div>
 <div class="codeline">        buf += sizeof(num_filters);</div>
 <div class="codeline">        <span class="keyword">if</span> (num_filters &gt; 1 /* FIXME */)</div>
 <div class="codeline">                return -EINVAL;</div>
@@ -1459,6 +1486,60 @@ External structures</p>
 <pre>
 </pre>
 <div class="codeline">        return return_code;</div>
+<div class="codeline">}</div>
+<pre>
+</pre>
+<div class="codeline"><span class="keyword">static</span> <span class="keyword">int</span> lsmsb_getprocattr(<span class="keyword">struct</span> task_<span class="keyword">struct</span> *p, <span class="keyword">char</span> *name, <span class="keyword">char</span> **value)</div>
+<div class="codeline">{</div>
+<div class="codeline">        <span class="keyword">char</span> *cp;</div>
+<div class="codeline">        <span class="keyword">int</span> slen;</div>
+<pre>
+</pre>
+<div class="codeline">        <span class="keyword">if</span> (strcmp(name, <span class="string">"current"</span>) != 0)</div>
+<div class="codeline">                return -EINVAL;</div>
+<pre>
+</pre>
+<div class="codeline">        cp = kstrdup(<span class="string">"+"</span>, GFP_KERNEL);</div>
+<div class="codeline">        <span class="keyword">if</span> (cp == NULL)</div>
+<div class="codeline">                return -ENOMEM;</div>
+<pre>
+</pre>
+<div class="codeline">        slen = strlen(cp);</div>
+<div class="codeline">        *value = cp;</div>
+<div class="codeline">        return slen;</div>
+<div class="codeline">}</div>
+<pre>
+</pre>
+<div class="codeline"><span class="keyword">static</span> <span class="keyword">int</span> lsmsb_setprocattr(<span class="keyword">struct</span> task_<span class="keyword">struct</span> *p, <span class="keyword">char</span> *name,</div>
+<div class="codeline">                             void *value, size_t size)</div>
+<div class="codeline">{</div>
+<div class="codeline">        <span class="keyword">int</span> rv;</div>
+<pre>
+</pre>
+<div class="codeline">        <span class="keyword">if</span> (p != current)</div>
+<div class="codeline">                return -EPERM;</div>
+<pre>
+</pre>
+<div class="codeline">        <span class="keyword">if</span> (!capable(CAP_MAC_ADMIN))</div>
+<div class="codeline">                return -EPERM;</div>
+<pre>
+</pre>
+<div class="codeline">        <span class="keyword">if</span> (value == NULL || size == 0)</div>
+<div class="codeline">                return -EINVAL;</div>
+<pre>
+</pre>
+<div class="codeline">        <span class="keyword">if</span> (strcmp(name, <span class="string">"current"</span>) != 0)</div>
+<div class="codeline">                return -EINVAL;</div>
+<pre>
+</pre>
+<div class="codeline">        rv = lsmsb_sandbox_install(p, value, size);</div>
+<div class="codeline">        <span class="keyword">if</span> (rv) {</div>
+<div class="codeline">                printk(KERN_ERR <span class="string">"bad sandbox\n"</span>);</div>
+<div class="codeline">                return rv;</div>
+<div class="codeline">        }</div>
+<pre>
+</pre>
+<div class="codeline">        return size;</div>
 <div class="codeline">}</div>
       </div>
       <div class="sectionrefs">
@@ -1533,7 +1614,7 @@ Installing a filter</p>
       <div class="codename">Installing a filter</div>
       <div class="code">
 <div class="codeline"><span class="keyword">static</span> <span class="keyword">int</span> lsmsb_filter_install(<span class="keyword">struct</span> lsmsb_sandbox *sandbox,</div>
-<div class="codeline">                                <span class="keyword">const</span> <span class="keyword">char</span> __user **buf)</div>
+<div class="codeline">                                <span class="keyword">const</span> <span class="keyword">char</span> **buf)</div>
 <div class="codeline">{</div>
 <div class="codeline">        <span class="keyword">struct</span> lsmsb_filter_wire filter_wire;</div>
 <div class="codeline">        <span class="keyword">struct</span> lsmsb_filter *filter;</div>
@@ -1542,8 +1623,7 @@ Installing a filter</p>
 <div class="codeline">        <span class="keyword">uint8_t</span> *type_vector;</div>
 <pre>
 </pre>
-<div class="codeline">        <span class="keyword">if</span> (copy_from_user(&amp;filter_wire, *buf, sizeof(filter_wire)))</div>
-<div class="codeline">                return -EFAULT;</div>
+<div class="codeline">        memcpy(&amp;filter_wire, *buf, sizeof(filter_wire));</div>
 <pre>
 </pre>
 <div class="codeline">        <span class="keyword">if</span> (filter_wire.num_operations &gt; LSMSB_FILTER_OPS_MAX ||</div>
@@ -1573,11 +1653,8 @@ Installing a filter</p>
 <div class="codeline">                                     GFP_KERNEL);</div>
 <div class="codeline">        <span class="keyword">if</span> (!filter-&gt;operations)</div>
 <div class="codeline">                goto error;</div>
-<div class="codeline">        <span class="keyword">if</span> (copy_from_user(filter-&gt;operations, *buf,</div>
-<div class="codeline">                           filter-&gt;num_operations * sizeof(<span class="keyword">uint32_t</span>))) {</div>
-<div class="codeline">                return_code = -EFAULT;</div>
-<div class="codeline">                goto error;</div>
-<div class="codeline">        }</div>
+<div class="codeline">        memcpy(filter-&gt;operations, *buf,</div>
+<div class="codeline">                           filter-&gt;num_operations * sizeof(<span class="keyword">uint32_t</span>));</div>
 <div class="codeline">        *buf += filter-&gt;num_operations * sizeof(<span class="keyword">uint32_t</span>);</div>
 <pre>
 </pre>
@@ -1604,11 +1681,13 @@ Installing a filter</p>
 </pre>
 <div class="codeline">        <span class="keyword">switch</span> (filter_wire.filter_code) {</div>
 <div class="codeline">        <span class="keyword">case</span> LSMSB_FILTER_CODE_DENTRY_OPEN:</div>
-<div class="codeline">                <span class="keyword">if</span> (sandbox-&gt;dentry_open) {</div>
+<div class="codeline">        <span class="keyword">case</span> LSMSB_FILTER_CODE_SOCKET_CREATE:</div>
+<div class="codeline">        <span class="keyword">case</span> LSMSB_FILTER_CODE_SOCKET_CONNECT:</div>
+<div class="codeline">                <span class="keyword">if</span> (sandbox-&gt;filters[filter_wire.filter_code]) {</div>
 <div class="codeline">                        return_code = -EINVAL;</div>
 <div class="codeline">                        goto error;</div>
 <div class="codeline">                }</div>
-<div class="codeline">                sandbox-&gt;dentry_open = filter;</div>
+<div class="codeline">                sandbox-&gt;filters[filter_wire.filter_code] = filter;</div>
 <div class="codeline">                break;</div>
 <div class="codeline">        <span class="keyword">default</span>:</div>
 <div class="codeline">                return_code = -EINVAL;</div>
@@ -1640,13 +1719,12 @@ Installing a constant</p>
       <div class="codename">Installing a constant</div>
       <div class="code">
 <div class="codeline"><span class="keyword">static</span> <span class="keyword">int</span> lsmsb_constant_install(<span class="keyword">struct</span> lsmsb_value *value,</div>
-<div class="codeline">                                  <span class="keyword">const</span> <span class="keyword">char</span> __user **buf)</div>
+<div class="codeline">                                  <span class="keyword">const</span> <span class="keyword">char</span> **buf)</div>
 <div class="codeline">{</div>
 <div class="codeline">        <span class="keyword">struct</span> lsmsb_constant_wire constant_wire;</div>
 <pre>
 </pre>
-<div class="codeline">        <span class="keyword">if</span> (copy_from_user(&amp;constant_wire, *buf, sizeof(constant_wire)))</div>
-<div class="codeline">                return -EFAULT;</div>
+<div class="codeline">        memcpy(&amp;constant_wire, *buf, sizeof(constant_wire));</div>
 <div class="codeline">        <span class="keyword">if</span> (constant_wire.type &gt; 1)</div>
 <div class="codeline">                return -EINVAL;</div>
 <div class="codeline">        *buf += sizeof(constant_wire);</div>
@@ -1662,10 +1740,7 @@ Installing a constant</p>
 <div class="codeline">        value-&gt;data = kmalloc(value-&gt;value, GFP_KERNEL);</div>
 <div class="codeline">        <span class="keyword">if</span> (!value-&gt;data)</div>
 <div class="codeline">                return -ENOMEM;</div>
-<div class="codeline">        <span class="keyword">if</span> (copy_from_user(value-&gt;data, *buf, value-&gt;value)) {</div>
-<div class="codeline">                kfree(value-&gt;data);</div>
-<div class="codeline">                return -EFAULT;</div>
-<div class="codeline">        }</div>
+<div class="codeline">        memcpy(value-&gt;data, *buf, value-&gt;value);</div>
 <div class="codeline">        *buf += value-&gt;value;</div>
 <pre>
 </pre>
@@ -1691,10 +1766,12 @@ Installing a constant</p>
       <div class="codename">LSM interface</div>
       <div class="code">
     <div class="ref"><span class="reftext">dentry_open hook</span> <a href="#section-35" class="refnum">35</a></div>
-    <div class="ref"><span class="reftext">LSM operations structure</span> <a href="#section-36" class="refnum">36</a></div>
+    <div class="ref"><span class="reftext">socket_create hook</span> <a href="#section-36" class="refnum">36</a></div>
+    <div class="ref"><span class="reftext">socket_connect hook</span> <a href="#section-37" class="refnum">37</a></div>
+    <div class="ref"><span class="reftext">LSM operations structure</span> <a href="#section-38" class="refnum">38</a></div>
       </div>
       <div class="sectionrefs">
-<a class="fileref" href="#section-38">lsmsb.c</a> 
+<a class="fileref" href="#section-40">lsmsb.c</a> 
     </div>
     <a name="section-33"></a>
     <div class="section" id="section-33">
@@ -1728,7 +1805,14 @@ Handling sandbox lifetimes</p>
 </pre>
 <div class="codeline"><span class="keyword">static</span> void lsmsb_sandbox_free(<span class="keyword">struct</span> lsmsb_sandbox *sandbox)</div>
 <div class="codeline">{</div>
-<div class="codeline">        lsmsb_filter_free(sandbox-&gt;dentry_open);</div>
+<div class="codeline">        <span class="keyword">int</span> i = LSMSB_FILTER_CODE_MAX;</div>
+<pre>
+</pre>
+<div class="codeline">        <span class="keyword">while</span> (--i &gt; 0) {</div>
+<div class="codeline">                lsmsb_filter_free(sandbox-&gt;filters[i]);</div>
+<div class="codeline">        }</div>
+<pre>
+</pre>
 <div class="codeline">        kfree(sandbox);</div>
 <div class="codeline">}</div>
 <pre>
@@ -1811,6 +1895,7 @@ of the filesystem.</p>
 <div class="codeline"><span class="keyword">static</span> <span class="keyword">int</span> lsmsb_dentry_open(<span class="keyword">struct</span> file *f, <span class="keyword">const</span> <span class="keyword">struct</span> cred *cred)</div>
 <div class="codeline">{</div>
 <div class="codeline">        <span class="keyword">const</span> <span class="keyword">struct</span> lsmsb_sandbox *sandbox;</div>
+<div class="codeline">        <span class="keyword">const</span> <span class="keyword">struct</span> lsmsb_filter *filter;</div>
 <div class="codeline">        <span class="keyword">char</span> buffer[512];</div>
 <div class="codeline">        <span class="keyword">struct</span> lsmsb_value registers[2];</div>
 <pre>
@@ -1827,7 +1912,8 @@ of the filesystem.</p>
 <pre>
 </pre>
 <div class="codeline">        <span class="keyword">while</span> (sandbox) {</div>
-<div class="codeline">                <span class="keyword">if</span> (sandbox-&gt;dentry_open)</div>
+<div class="codeline">                filter = sandbox-&gt;filters[LSMSB_FILTER_CODE_DENTRY_OPEN];</div>
+<div class="codeline">                <span class="keyword">if</span> (filter)</div>
 <div class="codeline">                        break;</div>
 <div class="codeline">                sandbox = sandbox-&gt;parent;</div>
 <div class="codeline">        }</div>
@@ -1861,9 +1947,10 @@ of the filesystem.</p>
 <pre>
 </pre>
 <div class="codeline">        <span class="keyword">while</span> (sandbox) {</div>
-<div class="codeline">                <span class="keyword">if</span> (sandbox-&gt;dentry_open) {</div>
-<div class="codeline">                        <span class="keyword">if</span> (!lsmsb_filter_run(sandbox-&gt;dentry_open,</div>
-<div class="codeline">                                              registers, 2)) {</div>
+<div class="codeline">                filter = sandbox-&gt;filters[LSMSB_FILTER_CODE_DENTRY_OPEN];</div>
+<div class="codeline">                <span class="keyword">if</span> (filter) {</div>
+<div class="codeline">                        <span class="keyword">if</span> (!lsmsb_filter_run(filter, registers,</div>
+<div class="codeline">                                              ARRAY_SIZE(registers))) {</div>
 <div class="codeline">                                return -EPERM;</div>
 <div class="codeline">                        }</div>
 <div class="codeline">                }</div>
@@ -1882,16 +1969,63 @@ of the filesystem.</p>
     <a name="section-36"></a>
     <div class="section" id="section-36">
       <p><span class="sectionnumber">36</span>
-</p>
+The <tt>socket_create</tt> hook</p>
 
-      <div class="codename">LSM operations structure</div>
+<p><tt>socket_create</tt> is called when a process creates a socket.</p>
+
+      <div class="codename">socket_create hook</div>
       <div class="code">
-<div class="codeline"><span class="keyword">struct</span> security_operations lsmsb_ops = {</div>
-<div class="codeline">        .name           = <span class="string">"lsmsb"</span>,</div>
-<div class="codeline">        .dentry_open    = lsmsb_dentry_open,</div>
-<div class="codeline">        .cred_prepare   = lsmsb_cred_prepare,</div>
-<div class="codeline">        .cred_free      = lsmsb_cred_free,</div>
-<div class="codeline">};</div>
+<div class="codeline"><span class="keyword">static</span> <span class="keyword">int</span> lsmsb_socket_create(<span class="keyword">int</span> family, <span class="keyword">int</span> type, <span class="keyword">int</span> protocol, <span class="keyword">int</span> kern)</div>
+<div class="codeline">{</div>
+<div class="codeline">        <span class="keyword">const</span> <span class="keyword">struct</span> cred *cred = current_cred();</div>
+<div class="codeline">        <span class="keyword">const</span> <span class="keyword">struct</span> lsmsb_sandbox *sandbox;</div>
+<div class="codeline">        <span class="keyword">const</span> <span class="keyword">struct</span> lsmsb_filter *filter;</div>
+<div class="codeline">        <span class="keyword">struct</span> lsmsb_value registers[4];</div>
+<pre>
+</pre>
+<div class="codeline">        <span class="keyword">if</span> (!cred-&gt;security)</div>
+<div class="codeline">                return 0;</div>
+<div class="codeline">        sandbox = cred-&gt;security;</div>
+<pre>
+</pre>
+<div class="codeline">        <span class="keyword">while</span> (sandbox) {</div>
+<div class="codeline">                filter = sandbox-&gt;filters[LSMSB_FILTER_CODE_SOCKET_CREATE];</div>
+<div class="codeline">                <span class="keyword">if</span> (filter)</div>
+<div class="codeline">                        break;</div>
+<div class="codeline">                sandbox = sandbox-&gt;parent;</div>
+<div class="codeline">        }</div>
+<pre>
+</pre>
+<div class="codeline">        <span class="keyword">if</span> (!sandbox)</div>
+<div class="codeline">                return 0;</div>
+<pre>
+</pre>
+<div class="codeline">        registers[0].data = NULL;</div>
+<div class="codeline">        registers[0].value = family;</div>
+<div class="codeline">        registers[1].data = NULL;</div>
+<div class="codeline">        registers[1].value = type;</div>
+<div class="codeline">        registers[2].data = NULL;</div>
+<div class="codeline">        registers[2].value = protocol;</div>
+<div class="codeline">        registers[3].data = NULL;</div>
+<div class="codeline">        registers[3].value = kern;</div>
+<pre>
+</pre>
+<div class="codeline">        <span class="keyword">while</span> (sandbox) {</div>
+<div class="codeline">                filter = sandbox-&gt;filters[LSMSB_FILTER_CODE_SOCKET_CREATE];</div>
+<div class="codeline">                <span class="keyword">if</span> (filter) {</div>
+<div class="codeline">                        <span class="keyword">if</span> (!lsmsb_filter_run(filter, registers,</div>
+<div class="codeline">                                              ARRAY_SIZE(registers))) {</div>
+<div class="codeline">                                return -EPERM;</div>
+<div class="codeline">                        }</div>
+<div class="codeline">                }</div>
+<pre>
+</pre>
+<div class="codeline">                sandbox = sandbox-&gt;parent;</div>
+<div class="codeline">        }</div>
+<pre>
+</pre>
+<div class="codeline">        return 0;</div>
+<div class="codeline">}</div>
       </div>
       <div class="sectionrefs">
 <a class="sectionref" href="#section-32">32</a> 
@@ -1899,6 +2033,107 @@ of the filesystem.</p>
     <a name="section-37"></a>
     <div class="section" id="section-37">
       <p><span class="sectionnumber">37</span>
+The <tt>socket_connect</tt> hook</p>
+
+<p><tt>socket_connect</tt> is called when a process connects a socket. If the
+socket is AF_INET, then the filter receives port number in <tt>r3</tt> and IP address
+in <tt>r4</tt>. For other socket types, those parameters are set to zero.<p>
+
+      <div class="codename">socket_connect hook</div>
+      <div class="code">
+<div class="codeline"><span class="keyword">static</span> <span class="keyword">int</span> lsmsb_socket_connect(<span class="keyword">struct</span> socket *sock,</div>
+<div class="codeline">                                <span class="keyword">struct</span> sockaddr *address, <span class="keyword">int</span> addrlen)</div>
+<div class="codeline">{</div>
+<div class="codeline">        <span class="keyword">const</span> <span class="keyword">struct</span> cred *cred = current_cred();</div>
+<div class="codeline">        <span class="keyword">const</span> <span class="keyword">struct</span> lsmsb_sandbox *sandbox;</div>
+<div class="codeline">        <span class="keyword">const</span> <span class="keyword">struct</span> lsmsb_filter *filter;</div>
+<div class="codeline">        <span class="keyword">struct</span> lsmsb_value registers[6];</div>
+<div class="codeline">        <span class="keyword">const</span> <span class="keyword">struct</span> sock *sk = sock-&gt;sk;</div>
+<pre>
+</pre>
+<div class="codeline">        <span class="keyword">if</span> (!cred-&gt;security)</div>
+<div class="codeline">                return 0;</div>
+<div class="codeline">        sandbox = cred-&gt;security;</div>
+<pre>
+</pre>
+<div class="codeline">        <span class="keyword">while</span> (sandbox) {</div>
+<div class="codeline">                filter = sandbox-&gt;filters[LSMSB_FILTER_CODE_SOCKET_CONNECT];</div>
+<div class="codeline">                <span class="keyword">if</span> (filter)</div>
+<div class="codeline">                        break;</div>
+<div class="codeline">                sandbox = sandbox-&gt;parent;</div>
+<div class="codeline">        }</div>
+<pre>
+</pre>
+<div class="codeline">        <span class="keyword">if</span> (!sandbox)</div>
+<div class="codeline">                return 0;</div>
+<div class="codeline">        </div>
+<div class="codeline">        <span class="keyword">if</span> (!sk)</div>
+<div class="codeline">                return 0;</div>
+<div class="codeline">        registers[0].data = NULL;</div>
+<div class="codeline">        registers[0].value = sk-&gt;sk_family;</div>
+<div class="codeline">        registers[1].data = NULL;</div>
+<div class="codeline">        registers[1].value = sock-&gt;type;</div>
+<div class="codeline">        registers[2].data = NULL;</div>
+<div class="codeline">        registers[2].value = sk-&gt;sk_protocol;</div>
+<div class="codeline">        registers[3].data = NULL;</div>
+<div class="codeline">        registers[3].value = 0;</div>
+<div class="codeline">        registers[4].data = NULL;</div>
+<div class="codeline">        registers[4].value = 0;</div>
+<div class="codeline">        <span class="keyword">if</span> (sk-&gt;sk_family == AF_INET) {</div>
+<div class="codeline">                <span class="keyword">struct</span> sockaddr_in *addr4 = (<span class="keyword">struct</span> sockaddr_in *)address;</div>
+<div class="codeline">                <span class="keyword">if</span> (addrlen &lt; sizeof(<span class="keyword">struct</span> sockaddr_in))</div>
+<div class="codeline">                        return -EINVAL;</div>
+<div class="codeline">                registers[3].value = ntohs(addr4-&gt;sin_port);</div>
+<div class="codeline">                registers[4].value = ntohl(addr4-&gt;sin_addr.s_addr);</div>
+<div class="codeline">        }</div>
+<div class="codeline">        registers[5].data = <span class="string">""</span>;</div>
+<div class="codeline">        registers[5].value = 0;</div>
+<pre>
+</pre>
+<div class="codeline">        <span class="keyword">while</span> (sandbox) {</div>
+<div class="codeline">                filter = sandbox-&gt;filters[LSMSB_FILTER_CODE_SOCKET_CONNECT];</div>
+<div class="codeline">                <span class="keyword">if</span> (filter) {</div>
+<div class="codeline">                        <span class="keyword">if</span> (!lsmsb_filter_run(filter, registers,</div>
+<div class="codeline">                                              ARRAY_SIZE(registers))) {</div>
+<div class="codeline">                                return -EPERM;</div>
+<div class="codeline">                        }</div>
+<div class="codeline">                }</div>
+<pre>
+</pre>
+<div class="codeline">                sandbox = sandbox-&gt;parent;</div>
+<div class="codeline">        }</div>
+<pre>
+</pre>
+<div class="codeline">        return 0;</div>
+<div class="codeline">}</div>
+      </div>
+      <div class="sectionrefs">
+<a class="sectionref" href="#section-32">32</a> 
+    </div>
+    <a name="section-38"></a>
+    <div class="section" id="section-38">
+      <p><span class="sectionnumber">38</span>
+</p>
+
+      <div class="codename">LSM operations structure</div>
+      <div class="code">
+<div class="codeline"><span class="keyword">struct</span> security_operations lsmsb_ops = {</div>
+<div class="codeline">        .name           = <span class="string">"lsmsb"</span>,</div>
+<div class="codeline">        .setprocattr    = lsmsb_setprocattr,</div>
+<div class="codeline">        .getprocattr    = lsmsb_getprocattr,</div>
+<div class="codeline">        .dentry_open    = lsmsb_dentry_open,</div>
+<div class="codeline">        .socket_create  = lsmsb_socket_create,</div>
+<div class="codeline">        .socket_connect = lsmsb_socket_connect,</div>
+<div class="codeline">        .cred_prepare   = lsmsb_cred_prepare,</div>
+<div class="codeline">        .cred_free      = lsmsb_cred_free,</div>
+<div class="codeline">};</div>
+      </div>
+      <div class="sectionrefs">
+<a class="sectionref" href="#section-32">32</a> 
+    </div>
+    <a name="section-39"></a>
+    <div class="section" id="section-39">
+      <p><span class="sectionnumber">39</span>
 Initialising the module</p>
 
 <p>
@@ -1932,10 +2167,10 @@ Initialising the module</p>
 <div class="codeline">security_initcall(lsmsb_init);</div>
       </div>
       <div class="sectionrefs">
-<a class="fileref" href="#section-38">lsmsb.c</a> 
+<a class="fileref" href="#section-40">lsmsb.c</a> 
     </div>
-    <div class="section" id="section-38">
-      <div class="sectionnumber">38</div>
+    <div class="section" id="section-40">
+      <div class="sectionnumber">40</div>
       <div class="outputfile">lsmsb.c</div>
       <div class="code">
 <div class="codeline"><span class="preprocessor">#include &lt;asm/atomic.h&gt;</span></div>
@@ -1944,6 +2179,7 @@ Initialising the module</p>
 <div class="codeline"><span class="preprocessor">#include &lt;linux/mount.h&gt;</span></div>
 <div class="codeline"><span class="preprocessor">#include &lt;linux/mnt_namespace.h&gt;</span></div>
 <div class="codeline"><span class="preprocessor">#include &lt;linux/fs_struct.h&gt;</span></div>
+<div class="codeline"><span class="preprocessor">#include &lt;net/sock.h&gt;</span></div>
 <div class="codeline"><span class="preprocessor">#include &lt;linux/uaccess.h&gt;</span></div>
 <pre>
 </pre>
@@ -1952,26 +2188,26 @@ Initialising the module</p>
 </pre>
     <div class="ref"><span class="reftext">Value structure</span> <a href="#section-3" class="refnum">3</a></div>
     <div class="ref"><span class="reftext">Filter structure</span> <a href="#section-2" class="refnum">2</a></div>
+    <div class="ref"><span class="reftext">Filter codes</span> <a href="#section-5" class="refnum">5</a></div>
     <div class="ref"><span class="reftext">Sandbox structure</span> <a href="#section-1" class="refnum">1</a></div>
     <div class="ref"><span class="reftext">List of operations</span> <a href="#section-4" class="refnum">4</a></div>
-    <div class="ref"><span class="reftext">Filter codes</span> <a href="#section-5" class="refnum">5</a></div>
     <div class="ref"><span class="reftext">Typechecking</span> <a href="#section-6" class="refnum">6</a></div>
     <div class="ref"><span class="reftext">Evaluating filters</span> <a href="#section-21" class="refnum">21</a></div>
     <div class="ref"><span class="reftext">Installing sandboxes</span> <a href="#section-25" class="refnum">25</a></div>
     <div class="ref"><span class="reftext">LSM interface</span> <a href="#section-32" class="refnum">32</a></div>
-    <div class="ref"><span class="reftext">Module initialisation</span> <a href="#section-37" class="refnum">37</a></div>
+    <div class="ref"><span class="reftext">Module initialisation</span> <a href="#section-39" class="refnum">39</a></div>
       </div>
     </div>
-    <div class="section" id="section-39">
-      <div class="sectionnumber">39</div>
+    <div class="section" id="section-41">
+      <div class="sectionnumber">41</div>
       <div class="outputfile">lsmsb_external.h</div>
       <div class="code">
     <div class="ref"><span class="reftext">External structures</span> <a href="#section-26" class="refnum">26</a></div>
       </div>
     </div>
-    <a name="section-40"></a>
-    <div class="section" id="section-40">
-      <p><span class="sectionnumber">40</span>
+    <a name="section-42"></a>
+    <div class="section" id="section-42">
+      <p><span class="sectionnumber">42</span>
 <b>The assembler</b></p>
 
 <p>Obviously humans are going to need some assistance when building these
@@ -1991,7 +2227,7 @@ argument (which requests write access) and fails if it's set.</p>
 <div class="codeline">filter dentry-open {</div>
 <div class="codeline">  ldi r2,1;</div>
 <div class="codeline">  and r2,r1,r2;</div>
-<div class="codeline">  jc r2,#fail;</div>
+<div class="codeline">  jnz r2,#fail;</div>
 <div class="codeline">  ldi r0,1;</div>
 <div class="codeline">  ret r0;</div>
 <div class="codeline"><span class="preprocessor">#fail:</span></div>
@@ -2000,11 +2236,11 @@ argument (which requests write access) and fails if it's set.</p>
 <div class="codeline">}</div>
       </div>
       <div class="sectionrefs">
-<a class="fileref" href="#section-42">example-sandbox1.sb</a> 
+<a class="fileref" href="#section-44">example-sandbox1.sb</a> 
     </div>
-    <a name="section-41"></a>
-    <div class="section" id="section-41">
-      <p><span class="sectionnumber">41</span>
+    <a name="section-43"></a>
+    <div class="section" id="section-43">
+      <p><span class="sectionnumber">43</span>
 A more complex example</p>
 
 <p>Here we have a more complex example which involves bytestrings and
@@ -2019,13 +2255,13 @@ opened) and test that <tt>/etc/</tt> is a prefix of the path.</p>
       <div class="code">
 <div class="codeline">filter dentry-open {</div>
 <div class="codeline">  constants {</div>
-<div class="codeline">    var etc-prefix bytestring = <span class="string">"/etc/"</span>;</div>
+<div class="codeline">    etc-prefix = <span class="string">"/etc/"</span>;</div>
 <div class="codeline">  }</div>
 <pre>
 </pre>
 <div class="codeline">  ldc r2,etc-prefix;</div>
 <div class="codeline">  isprefixof r2,r2,r0;</div>
-<div class="codeline">  jc r2,#fail;</div>
+<div class="codeline">  jnz r2,#fail;</div>
 <div class="codeline">  ldi r0,1;</div>
 <div class="codeline">  ret r0;</div>
 <div class="codeline"><span class="preprocessor">#fail:</span></div>
@@ -2034,25 +2270,72 @@ opened) and test that <tt>/etc/</tt> is a prefix of the path.</p>
 <div class="codeline">}</div>
       </div>
       <div class="sectionrefs">
-<a class="fileref" href="#section-43">example-sandbox2.sb</a> 
+<a class="fileref" href="#section-45">example-sandbox2.sb</a> 
     </div>
-    <div class="section" id="section-42">
-      <div class="sectionnumber">42</div>
+    <div class="section" id="section-44">
+      <div class="sectionnumber">44</div>
       <div class="outputfile">example-sandbox1.sb</div>
       <div class="code">
-    <div class="ref"><span class="reftext">LSMSB example code</span> <a href="#section-40" class="refnum">40</a></div>
+    <div class="ref"><span class="reftext">LSMSB example code</span> <a href="#section-42" class="refnum">42</a></div>
       </div>
     </div>
-    <div class="section" id="section-43">
-      <div class="sectionnumber">43</div>
+    <div class="section" id="section-45">
+      <div class="sectionnumber">45</div>
       <div class="outputfile">example-sandbox2.sb</div>
       <div class="code">
-    <div class="ref"><span class="reftext">LSMSB example code</span> <a href="#section-41" class="refnum">41</a></div>
+    <div class="ref"><span class="reftext">LSMSB example code</span> <a href="#section-43" class="refnum">43</a></div>
       </div>
     </div>
-    <a name="section-44"></a>
-    <div class="section" id="section-44">
-      <p><span class="sectionnumber">44</span>
+    <div class="section" id="section-46">
+      <div class="sectionnumber">46</div>
+      <div class="outputfile">example-sandbox3.sb</div>
+      <div class="code">
+<div class="codeline">filter socket-create {</div>
+<div class="codeline">  ldi r4, 1; <span class="comment">// AF_UNIX</span></div>
+<div class="codeline">  eq  r0, r0, r4;</div>
+<div class="codeline">  ret r0;</div>
+<div class="codeline">}</div>
+<pre>
+</pre>
+      </div>
+    </div>
+    <div class="section" id="section-47">
+      <div class="sectionnumber">47</div>
+      <div class="outputfile">example-sandbox4.sb</div>
+      <div class="code">
+<div class="codeline">filter socket-connect {</div>
+<div class="codeline">  constants {</div>
+<div class="codeline">    AF_UNIX = 1;</div>
+<div class="codeline">    AF_INET = 2;</div>
+<div class="codeline">    localnet = 0x7F000000;</div>
+<div class="codeline">  }</div>
+<pre>
+</pre>
+<div class="codeline">  ldc r6, AF_UNIX;</div>
+<div class="codeline">  eq  r0, r1, r6;</div>
+<div class="codeline">  jnz r0, #done;</div>
+<pre>
+</pre>
+<div class="codeline">  ldc r6, AF_INET;</div>
+<div class="codeline">  eq  r0, r1, r6;</div>
+<div class="codeline">  jz  r0, #done;</div>
+<pre>
+</pre>
+<div class="codeline">  ldc r6, localnet;</div>
+<div class="codeline">  and r0, r4, r6;</div>
+<div class="codeline">  eq  r0, r0, r6;</div>
+<pre>
+</pre>
+<div class="codeline"><span class="preprocessor">#done:</span></div>
+<div class="codeline">  ret r0;</div>
+<div class="codeline">}</div>
+<pre>
+</pre>
+      </div>
+    </div>
+    <a name="section-48"></a>
+    <div class="section" id="section-48">
+      <p><span class="sectionnumber">48</span>
 The filter structure</p>
 
 While parsing filters, we build up a structure called a <tt>Filter</tt> (we've
@@ -2068,8 +2351,9 @@ switched to C++ for this code).
 <div class="codeline">  }</div>
 <pre>
 </pre>
-    <div class="ref">  <span class="reftext">bool Filter::Typecheck() const {...</span> <a href="#section-65" class="refnum">65</a></div>
-    <div class="ref">  <span class="reftext">bool Filter::Write() const {...</span> <a href="#section-67" class="refnum">67</a></div>
+    <div class="ref">  <span class="reftext">bool Filter::Typecheck() const {...</span> <a href="#section-69" class="refnum">69</a></div>
+    <div class="ref">  <span class="reftext">unsigned Filter::OptimizeConstants() {...</span> <a href="#section-72" class="refnum">72</a></div>
+    <div class="ref">  <span class="reftext">bool Filter::Write(bool optimize = true) {...</span> <a href="#section-71" class="refnum">71</a></div>
 <pre>
 </pre>
 <div class="codeline">  std::string name;  <span class="comment">// the name of the filter (i.e. "dentry-open")</span></div>
@@ -2081,11 +2365,11 @@ switched to C++ for this code).
 <div class="codeline">};</div>
       </div>
       <div class="sectionrefs">
-<a class="fileref" href="#section-70">lsmsb-as.rl</a> 
+<a class="fileref" href="#section-75">lsmsb-as.rl</a> 
     </div>
-    <a name="section-45"></a>
-    <div class="section" id="section-45">
-      <p><span class="sectionnumber">45</span>
+    <a name="section-49"></a>
+    <div class="section" id="section-49">
+      <p><span class="sectionnumber">49</span>
 The constant structure</p>
 
 <p>Constants in this language have a name and a type. We implement this as a base
@@ -2098,7 +2382,7 @@ external format which the kernel expects.</p>
       <div class="code">
 <div class="codeline"><span class="keyword">struct</span> Constant {</div>
 <div class="codeline">  explicit Constant(<span class="keyword">const</span> std::string &amp;n)</div>
-<div class="codeline">      : name(n) {</div>
+<div class="codeline">      : name(n), gap(0), small(false), used(false) {</div>
 <div class="codeline">  }</div>
 <pre>
 </pre>
@@ -2109,6 +2393,9 @@ external format which the kernel expects.</p>
 <pre>
 </pre>
 <div class="codeline">  <span class="keyword">const</span> std::string name;</div>
+<div class="codeline">  <span class="keyword">unsigned</span> gap;</div>
+<div class="codeline">  bool small;</div>
+<div class="codeline">  bool used;</div>
 <pre>
 </pre>
 <div class="codeline">  virtual Type type() <span class="keyword">const</span> = 0;</div>
@@ -2132,7 +2419,7 @@ external format which the kernel expects.</p>
 <div class="codeline">    <span class="keyword">struct</span> lsmsb_constant_wire wire;</div>
 <pre>
 </pre>
-<div class="codeline">    wire.type = 1;</div>
+<div class="codeline">    wire.type = TYPE_BYTESTRING;</div>
 <div class="codeline">    wire.value = value.size();</div>
 <pre>
 </pre>
@@ -2154,11 +2441,12 @@ external format which the kernel expects.</p>
 <div class="codeline">  U32(<span class="keyword">const</span> std::string &amp;name, <span class="keyword">uint32_t</span> v)</div>
 <div class="codeline">      : Constant(name),</div>
 <div class="codeline">        value(v) {</div>
+<div class="codeline">    small = ((v &amp; 0xfffff) == v);</div>
 <div class="codeline">  }</div>
 <pre>
 </pre>
 <div class="codeline">  Type type() <span class="keyword">const</span> {</div>
-<div class="codeline">    return TYPE_BYTESTRING;</div>
+<div class="codeline">    return TYPE_U32;</div>
 <div class="codeline">  }</div>
 <pre>
 </pre>
@@ -2166,7 +2454,7 @@ external format which the kernel expects.</p>
 <div class="codeline">    <span class="keyword">struct</span> lsmsb_constant_wire wire;</div>
 <pre>
 </pre>
-<div class="codeline">    wire.type = 0;</div>
+<div class="codeline">    wire.type = TYPE_U32;</div>
 <div class="codeline">    wire.value = value;</div>
 <pre>
 </pre>
@@ -2182,11 +2470,11 @@ external format which the kernel expects.</p>
 <div class="codeline">};</div>
       </div>
       <div class="sectionrefs">
-<a class="fileref" href="#section-70">lsmsb-as.rl</a> 
+<a class="fileref" href="#section-75">lsmsb-as.rl</a> 
     </div>
-    <a name="section-46"></a>
-    <div class="section" id="section-46">
-      <p><span class="sectionnumber">46</span>
+    <a name="section-50"></a>
+    <div class="section" id="section-50">
+      <p><span class="sectionnumber">50</span>
 <b>Parsing</b></p>
 
 <p>The parser is written using <a
@@ -2218,7 +2506,7 @@ variable.</p>
 <div class="codeline">}</div>
 <pre>
 </pre>
-<div class="codeline">ws = (' ' | '\t' | ('\n' %next_line) | <span class="string">"//"</span> . (any - '\n') . ('\n' %next_line) | <span class="string">"/*"</span> . any :&gt;&gt; <span class="string">"*/"</span>)*;</div>
+<div class="codeline">ws = (' ' | '\t' | ('\n' %next_line) | <span class="string">"//"</span> . (any - '\n')* . ('\n' %next_line) | <span class="string">"/*"</span> . any :&gt;&gt; <span class="string">"*/"</span>)*;</div>
 <pre>
 </pre>
 <div class="codeline">action start {</div>
@@ -2226,11 +2514,11 @@ variable.</p>
 <div class="codeline">}</div>
       </div>
       <div class="sectionrefs">
-<a class="fileref" href="#section-70">lsmsb-as.rl</a> 
+<a class="fileref" href="#section-75">lsmsb-as.rl</a> 
     </div>
-    <a name="section-47"></a>
-    <div class="section" id="section-47">
-      <p><span class="sectionnumber">47</span>
+    <a name="section-51"></a>
+    <div class="section" id="section-51">
+      <p><span class="sectionnumber">51</span>
 Parsing a filter</p>
 
       <div class="codename">Parsing a filter</div>
@@ -2238,11 +2526,11 @@ Parsing a filter</p>
 <div class="codeline">filter = <span class="string">"filter"</span> . ws . (token &gt;start %filter_new) . ws . <span class="string">"{"</span> . ws . constants? . spillslots? . inst* . (<span class="string">"}"</span> @filter_push) . ws;</div>
       </div>
       <div class="sectionrefs">
-<a class="fileref" href="#section-70">lsmsb-as.rl</a> 
+<a class="fileref" href="#section-75">lsmsb-as.rl</a> 
     </div>
-    <a name="section-48"></a>
-    <div class="section" id="section-48">
-      <p><span class="sectionnumber">48</span>
+    <a name="section-52"></a>
+    <div class="section" id="section-52">
+      <p><span class="sectionnumber">52</span>
 Starting to parse a new filter</p>
 
 <p>In the Ragel chunk above, a token is parsed for the filter name and, at the
@@ -2282,11 +2570,11 @@ name in the list of supported filters</p>
 <div class="codeline">}</div>
       </div>
       <div class="sectionrefs">
-<a class="fileref" href="#section-70">lsmsb-as.rl</a> 
+<a class="fileref" href="#section-75">lsmsb-as.rl</a> 
     </div>
-    <a name="section-49"></a>
-    <div class="section" id="section-49">
-      <p><span class="sectionnumber">49</span>
+    <a name="section-53"></a>
+    <div class="section" id="section-53">
+      <p><span class="sectionnumber">53</span>
 Parsing constants</p>
 
       <div class="codename">Parsing constants</div>
@@ -2312,22 +2600,20 @@ Parsing constants</p>
 <pre>
 </pre>
 <div class="codeline">token = [a-zA-Z\-_][0-9a-zA-Z\-_]*;</div>
-<div class="codeline">u32 = <span class="string">"0x"</span>? . digit+;</div>
-<div class="codeline">constant_u32 = <span class="string">"u32"</span> . ws . <span class="string">"="</span> . ws . (u32 &gt;start %constant_u32) . ws;</div>
-<div class="codeline">bytestring_literal_hex = <span class="string">"x\""</span> . ([0-9a-fA-F]* &gt;start %constant_bytestring_hex) . <span class="string">"\""</span> . ws;</div>
-<div class="codeline">bytestring_literal_string = <span class="string">"\""</span> . ((any - '<span class="string">"')* &gt;start %constant_bytestring_string) . "</span>\<span class="string">""</span> . ws;</div>
-<div class="codeline">bytestring_literal = bytestring_literal_hex | bytestring_literal_string;</div>
-<div class="codeline">constant_bytestring = <span class="string">"bytestring"</span> . ws . <span class="string">"="</span> . ws . bytestring_literal;</div>
-<div class="codeline">constant_type_and_value = constant_u32 | constant_bytestring;</div>
-<div class="codeline">constant = <span class="string">"var"</span> . ws . (token &gt;start %constant_new) . ws . constant_type_and_value . ws . <span class="string">";"</span> . ws;</div>
+<div class="codeline">u32 = (<span class="string">"0x"</span> . xdigit+) | (<span class="string">"0"</span> . [0-7]*) | ([1-9]digit*);</div>
+<div class="codeline">constant_u32 = (u32 &gt;start %constant_u32);</div>
+<div class="codeline">bytestring_literal_hex = <span class="string">"x\""</span> . (xdigit* &gt;start %constant_bytestring_hex) . <span class="string">"\""</span>;</div>
+<div class="codeline">bytestring_literal_string = <span class="string">"\""</span> . ((any - '<span class="string">"')* &gt;start %constant_bytestring_string) . "</span>\<span class="string">""</span>;</div>
+<div class="codeline">constant_bytestring = bytestring_literal_hex | bytestring_literal_string;</div>
+<div class="codeline">constant = (token &gt;start %constant_new) . ws . <span class="string">"="</span> . ws . (constant_u32 | constant_bytestring) . ws . <span class="string">";"</span> . ws;</div>
 <div class="codeline">constants = <span class="string">"constants"</span> . ws . <span class="string">"{"</span> . ws . constant* . <span class="string">"}"</span> . ws;</div>
       </div>
       <div class="sectionrefs">
-<a class="fileref" href="#section-70">lsmsb-as.rl</a> 
+<a class="fileref" href="#section-75">lsmsb-as.rl</a> 
     </div>
-    <a name="section-50"></a>
-    <div class="section" id="section-50">
-      <p><span class="sectionnumber">50</span>
+    <a name="section-54"></a>
+    <div class="section" id="section-54">
+      <p><span class="sectionnumber">54</span>
 Helper functions</p>
 
       <div class="codename">Constant parsing helper functions</div>
@@ -2365,11 +2651,11 @@ Helper functions</p>
 <div class="codeline">}</div>
       </div>
       <div class="sectionrefs">
-<a class="fileref" href="#section-70">lsmsb-as.rl</a> 
+<a class="fileref" href="#section-75">lsmsb-as.rl</a> 
     </div>
-    <a name="section-51"></a>
-    <div class="section" id="section-51">
-      <p><span class="sectionnumber">51</span>
+    <a name="section-55"></a>
+    <div class="section" id="section-55">
+      <p><span class="sectionnumber">55</span>
 Parsing the spill slots declaration</p>
 
       <div class="codename">Parsing the spill slots declaration</div>
@@ -2382,11 +2668,11 @@ Parsing the spill slots declaration</p>
 <div class="codeline">spillslots = <span class="string">"spill-slots"</span> . ws . (u32 &gt;start %set_spill_slots) . ws . <span class="string">";"</span> . ws;</div>
       </div>
       <div class="sectionrefs">
-<a class="fileref" href="#section-70">lsmsb-as.rl</a> 
+<a class="fileref" href="#section-75">lsmsb-as.rl</a> 
     </div>
-    <a name="section-52"></a>
-    <div class="section" id="section-52">
-      <p><span class="sectionnumber">52</span>
+    <a name="section-56"></a>
+    <div class="section" id="section-56">
+      <p><span class="sectionnumber">56</span>
 Parsing instructions</p>
 
 <p>After the constants and spill-slots declarations, each line is an
@@ -2397,14 +2683,14 @@ we do everything in a single pass.</p>
 
       <div class="codename">Parsing instructions</div>
       <div class="code">
-<div class="codeline">inst = jump_target | and | ldc | ldi | jc | jmp | isprefixof | ret;</div>
+<div class="codeline">inst = jump_target | and | eq | ldc | ldi | jnz | jz | jmp | isprefixof | ret;</div>
       </div>
       <div class="sectionrefs">
-<a class="fileref" href="#section-70">lsmsb-as.rl</a> 
+<a class="fileref" href="#section-75">lsmsb-as.rl</a> 
     </div>
-    <a name="section-53"></a>
-    <div class="section" id="section-53">
-      <p><span class="sectionnumber">53</span>
+    <a name="section-57"></a>
+    <div class="section" id="section-57">
+      <p><span class="sectionnumber">57</span>
 Parsing simple instructions</p>
 
 <p>First we'll consider how to parse the easy instructions which don't
@@ -2412,16 +2698,16 @@ reference any other structures.</p>
 
       <div class="codename">Parsing simple instructions</div>
       <div class="code">
-    <div class="ref"><span class="reftext">Helper actions</span> <a href="#section-54" class="refnum">54</a></div>
-    <div class="ref"><span class="reftext">Pushing operations</span> <a href="#section-56" class="refnum">56</a></div>
-    <div class="ref"><span class="reftext">Parsing the simple operations</span> <a href="#section-57" class="refnum">57</a></div>
+    <div class="ref"><span class="reftext">Helper actions</span> <a href="#section-58" class="refnum">58</a></div>
+    <div class="ref"><span class="reftext">Pushing operations</span> <a href="#section-60" class="refnum">60</a></div>
+    <div class="ref"><span class="reftext">Parsing the simple operations</span> <a href="#section-61" class="refnum">61</a></div>
       </div>
       <div class="sectionrefs">
-<a class="fileref" href="#section-70">lsmsb-as.rl</a> 
+<a class="fileref" href="#section-75">lsmsb-as.rl</a> 
     </div>
-    <a name="section-54"></a>
-    <div class="section" id="section-54">
-      <p><span class="sectionnumber">54</span>
+    <a name="section-58"></a>
+    <div class="section" id="section-58">
+      <p><span class="sectionnumber">58</span>
 Helper actions</p>
 
 <p>We build up the current operation (in the global <tt>op</tt>) as we parse,
@@ -2447,11 +2733,11 @@ so we start with a bunch of helper actions for setting various parts of
 <div class="codeline">}</div>
       </div>
       <div class="sectionrefs">
-<a class="sectionref" href="#section-53">53</a> 
+<a class="sectionref" href="#section-57">57</a> 
     </div>
-    <a name="section-55"></a>
-    <div class="section" id="section-55">
-      <p><span class="sectionnumber">55</span>
+    <a name="section-59"></a>
+    <div class="section" id="section-59">
+      <p><span class="sectionnumber">59</span>
 Helper functions</p>
 
 <p>Those helper actions called several helper functions which we'll expand on
@@ -2477,11 +2763,11 @@ now:</p>
 <div class="codeline">}</div>
       </div>
       <div class="sectionrefs">
-<a class="fileref" href="#section-70">lsmsb-as.rl</a> 
+<a class="fileref" href="#section-75">lsmsb-as.rl</a> 
     </div>
-    <a name="section-56"></a>
-    <div class="section" id="section-56">
-      <p><span class="sectionnumber">56</span>
+    <a name="section-60"></a>
+    <div class="section" id="section-60">
+      <p><span class="sectionnumber">60</span>
 Pushing new operations</p>
 
 <p>Every time we complete an operation, we need to add it to the current
@@ -2495,11 +2781,11 @@ filter:</p>
 <div class="codeline">}</div>
       </div>
       <div class="sectionrefs">
-<a class="sectionref" href="#section-53">53</a> 
+<a class="sectionref" href="#section-57">57</a> 
     </div>
-    <a name="section-57"></a>
-    <div class="section" id="section-57">
-      <p><span class="sectionnumber">57</span>
+    <a name="section-61"></a>
+    <div class="section" id="section-61">
+      <p><span class="sectionnumber">61</span>
 Parsing the simple operations</p>
 
       <div class="codename">Parsing the simple operations</div>
@@ -2526,6 +2812,16 @@ Parsing the simple operations</p>
 <div class="codeline">      (<span class="string">";"</span> %push_op) . ws;</div>
 <pre>
 </pre>
+<div class="codeline">action opcode_eq {</div>
+<div class="codeline">  op |= static_cast&lt;uint32_t&gt;(LSMSB_OPCODE_EQ) &lt;&lt; 24;</div>
+<div class="codeline">}</div>
+<div class="codeline">eq = (<span class="string">"eq"</span> %opcode_eq) . ws .</div>
+<div class="codeline">      (reg &gt;start %set_reg1) . ws . <span class="string">","</span> . ws .</div>
+<div class="codeline">      (reg &gt;start %set_reg2) . ws . <span class="string">","</span> . ws .</div>
+<div class="codeline">      (reg &gt;start %set_reg3) . ws .</div>
+<div class="codeline">      (<span class="string">";"</span> %push_op) . ws;</div>
+<pre>
+</pre>
 <div class="codeline">action opcode_isprefixof {</div>
 <div class="codeline">  op |= static_cast&lt;uint32_t&gt;(LSMSB_OPCODE_ISPREFIXOF) &lt;&lt; 24;</div>
 <div class="codeline">}</div>
@@ -2536,11 +2832,11 @@ Parsing the simple operations</p>
 <div class="codeline">             (<span class="string">";"</span> %push_op) . ws;</div>
       </div>
       <div class="sectionrefs">
-<a class="sectionref" href="#section-53">53</a> 
+<a class="sectionref" href="#section-57">57</a> 
     </div>
-    <a name="section-58"></a>
-    <div class="section" id="section-58">
-      <p><span class="sectionnumber">58</span>
+    <a name="section-62"></a>
+    <div class="section" id="section-62">
+      <p><span class="sectionnumber">62</span>
 Parsing <tt>ldc</tt></p>
 
 <p>The <tt>ldc</tt> instruction is a little more complicated since we have to
@@ -2559,6 +2855,7 @@ walk the vector till we find the correct index.</p>
 </pre>
 <div class="codeline">  <span class="keyword">for</span> (i = 0; i &lt; current_filter-&gt;constants.size(); ++i) {</div>
 <div class="codeline">    <span class="keyword">if</span> (current_filter-&gt;constants[i]-&gt;name == constant_name) {</div>
+<div class="codeline">      current_filter-&gt;constants[i]-&gt;used = true;</div>
 <div class="codeline">      op |= i;</div>
 <div class="codeline">      break;</div>
 <div class="codeline">    }</div>
@@ -2578,11 +2875,11 @@ walk the vector till we find the correct index.</p>
 <div class="codeline">ldc = (<span class="string">"ldc"</span> %opcode_ldc) . ws . (reg &gt;start %set_reg1) . <span class="string">","</span> . ws . (token &gt;start %set_const) . ws . (<span class="string">";"</span> %push_op) . ws;</div>
       </div>
       <div class="sectionrefs">
-<a class="fileref" href="#section-70">lsmsb-as.rl</a> 
+<a class="fileref" href="#section-75">lsmsb-as.rl</a> 
     </div>
-    <a name="section-59"></a>
-    <div class="section" id="section-59">
-      <p><span class="sectionnumber">59</span>
+    <a name="section-63"></a>
+    <div class="section" id="section-63">
+      <p><span class="sectionnumber">63</span>
 Parsing jumps</p>
 
 <p>In the code which the kernel sees, all the jumps are expressed as an
@@ -2621,10 +2918,16 @@ offset for each instruction which jumps there.</p>
 <div class="codeline">jmp = (<span class="string">"jmp"</span> %opcode_jmp) . ws . '#' . (token &gt;start %jmp_mark) . ws . (<span class="string">";"</span> %push_op) . ws;</div>
 <pre>
 </pre>
-<div class="codeline">action opcode_jc {</div>
-<div class="codeline">  op |= static_cast&lt;uint32_t&gt;(LSMSB_OPCODE_JC) &lt;&lt; 24;</div>
+<div class="codeline">action opcode_jnz {</div>
+<div class="codeline">  op |= static_cast&lt;uint32_t&gt;(LSMSB_OPCODE_JNZ) &lt;&lt; 24;</div>
 <div class="codeline">}</div>
-<div class="codeline">jc = (<span class="string">"jc"</span> %opcode_jc) . ws . (reg &gt;start %set_reg1) . ws . <span class="string">","</span> . ws . '#' . (token &gt;start %jmp_mark) . ws . (<span class="string">";"</span> %push_op) . ws;</div>
+<div class="codeline">jnz = (<span class="string">"jnz"</span> %opcode_jnz) . ws . (reg &gt;start %set_reg1) . ws . <span class="string">","</span> . ws . '#' . (token &gt;start %jmp_mark) . ws . (<span class="string">";"</span> %push_op) . ws;</div>
+<pre>
+</pre>
+<div class="codeline">action opcode_jz {</div>
+<div class="codeline">  op |= static_cast&lt;uint32_t&gt;(LSMSB_OPCODE_JZ) &lt;&lt; 24;</div>
+<div class="codeline">}</div>
+<div class="codeline">jz = (<span class="string">"jz"</span> %opcode_jz) . ws . (reg &gt;start %set_reg1) . ws . <span class="string">","</span> . ws . '#' . (token &gt;start %jmp_mark) . ws . (<span class="string">";"</span> %push_op) . ws;</div>
 <pre>
 </pre>
 <div class="codeline">action jump_resolve {</div>
@@ -2650,11 +2953,11 @@ offset for each instruction which jumps there.</p>
 <div class="codeline">jump_target = '#' . (token &gt;start %jump_resolve) . ':' . ws;</div>
       </div>
       <div class="sectionrefs">
-<a class="fileref" href="#section-70">lsmsb-as.rl</a> 
+<a class="fileref" href="#section-75">lsmsb-as.rl</a> 
     </div>
-    <a name="section-60"></a>
-    <div class="section" id="section-60">
-      <p><span class="sectionnumber">60</span>
+    <a name="section-64"></a>
+    <div class="section" id="section-64">
+      <p><span class="sectionnumber">64</span>
 Parsing a whole file</p>
 
 <p>A file, as a whole, is just a list of filters:</p>
@@ -2664,19 +2967,19 @@ Parsing a whole file</p>
 <div class="codeline">as := ws . filter*;</div>
       </div>
       <div class="sectionrefs">
-<a class="fileref" href="#section-70">lsmsb-as.rl</a> 
+<a class="fileref" href="#section-75">lsmsb-as.rl</a> 
     </div>
-    <a name="section-61"></a>
-    <div class="section" id="section-61">
-      <p><span class="sectionnumber">61</span>
+    <a name="section-65"></a>
+    <div class="section" id="section-65">
+      <p><span class="sectionnumber">65</span>
 The <tt>main</tt> function</p>
 
       <div class="codename">main</div>
       <div class="code">
 <div class="codeline"><span class="keyword">int</span></div>
 <div class="codeline">main(int argc, <span class="keyword">char</span> **argv) {</div>
-    <div class="ref">  <span class="reftext">Opening and reading the input</span> <a href="#section-62" class="refnum">62</a></div>
-    <div class="ref">  <span class="reftext">parsing-globls</span> <a href="#section-63" class="refnum">63</a></div>
+    <div class="ref">  <span class="reftext">Opening and reading the input</span> <a href="#section-66" class="refnum">66</a></div>
+    <div class="ref">  <span class="reftext">parsing-globls</span> <a href="#section-67" class="refnum">67</a></div>
 <pre>
 </pre>
 <div class="codeline">  %% write init;</div>
@@ -2688,19 +2991,19 @@ The <tt>main</tt> function</p>
 <div class="codeline">  }</div>
 <pre>
 </pre>
-    <div class="ref">  <span class="reftext">typecheck-filters</span> <a href="#section-64" class="refnum">64</a></div>
-    <div class="ref">  <span class="reftext">serialise-filters</span> <a href="#section-66" class="refnum">66</a></div>
+    <div class="ref">  <span class="reftext">typecheck-filters</span> <a href="#section-68" class="refnum">68</a></div>
+    <div class="ref">  <span class="reftext">serialise-filters</span> <a href="#section-70" class="refnum">70</a></div>
 <pre>
 </pre>
 <div class="codeline">  return 0;</div>
 <div class="codeline">}</div>
       </div>
       <div class="sectionrefs">
-<a class="fileref" href="#section-70">lsmsb-as.rl</a> 
+<a class="fileref" href="#section-75">lsmsb-as.rl</a> 
     </div>
-    <a name="section-62"></a>
-    <div class="section" id="section-62">
-      <p><span class="sectionnumber">62</span>
+    <a name="section-66"></a>
+    <div class="section" id="section-66">
+      <p><span class="sectionnumber">66</span>
 Opening and reading the input</p>
 
       <div class="codename">Opening and reading the input</div>
@@ -2727,14 +3030,14 @@ Opening and reading the input</p>
 <div class="codeline">close(fd);</div>
       </div>
       <div class="sectionrefs">
-<a class="sectionref" href="#section-61">61</a> 
+<a class="sectionref" href="#section-65">65</a> 
     </div>
-    <a name="section-63"></a>
-    <div class="section" id="section-63">
-      <p><span class="sectionnumber">63</span>
+    <a name="section-67"></a>
+    <div class="section" id="section-67">
+      <p><span class="sectionnumber">67</span>
 Parsing variables</p>
 
-<p>A detailed <a href="#section-46">above</a>, during parsing a number of
+<p>A detailed <a href="#section-50">above</a>, during parsing a number of
 globals are used. These happen to not actually be globals in the C sense. Since
 the parsing code is expanded inline into this function, the 'globals' are
 actually local variables to this function.</p>
@@ -2754,11 +3057,11 @@ actually local variables to this function.</p>
 <div class="codeline">std::string current_const_name;</div>
       </div>
       <div class="sectionrefs">
-<a class="sectionref" href="#section-61">61</a> 
+<a class="sectionref" href="#section-65">65</a> 
     </div>
-    <a name="section-64"></a>
-    <div class="section" id="section-64">
-      <p><span class="sectionnumber">64</span>
+    <a name="section-68"></a>
+    <div class="section" id="section-68">
+      <p><span class="sectionnumber">68</span>
 Typechecking the filters</p>
 
 <p>Once we have parsed the filters we typecheck them since the kernel will
@@ -2781,11 +3084,11 @@ reject them anyway if they fail to typecheck. We simply call the
 <div class="codeline">  return 1;</div>
       </div>
       <div class="sectionrefs">
-<a class="sectionref" href="#section-61">61</a> 
+<a class="sectionref" href="#section-65">65</a> 
     </div>
-    <a name="section-65"></a>
-    <div class="section" id="section-65">
-      <p><span class="sectionnumber">65</span>
+    <a name="section-69"></a>
+    <div class="section" id="section-69">
+      <p><span class="sectionnumber">69</span>
 Typechecking a filter</p>
 
 <p>We wouldn't want the typechecking to diverge between the kernel and
@@ -2828,11 +3131,11 @@ constants.</p>
 <div class="codeline">}</div>
       </div>
       <div class="sectionrefs">
-<a class="sectionref" href="#section-44">44</a> 
+<a class="sectionref" href="#section-48">48</a> 
     </div>
-    <a name="section-66"></a>
-    <div class="section" id="section-66">
-      <p><span class="sectionnumber">66</span>
+    <a name="section-70"></a>
+    <div class="section" id="section-70">
+      <p><span class="sectionnumber">70</span>
 Serialising the filters</p>
 
 <p>Once the filters have been typechecked, we write them out to stdout in the
@@ -2857,24 +3160,26 @@ below.</p>
 <div class="codeline">}</div>
       </div>
       <div class="sectionrefs">
-<a class="sectionref" href="#section-61">61</a> 
+<a class="sectionref" href="#section-65">65</a> 
     </div>
-    <a name="section-67"></a>
-    <div class="section" id="section-67">
-      <p><span class="sectionnumber">67</span>
+    <a name="section-71"></a>
+    <div class="section" id="section-71">
+      <p><span class="sectionnumber">71</span>
 Serialising a filter</p>
 
 <p>We serialise a filter by filling out the <a href="#section-26">external structures</a> which the kernel expects and writing to
-<tt>stdout</tt>.</p>
+<tt>stdout</tt>. An optional optimization pass may be performed (see <a href="#section-72">below</a>).</p>
 
-      <div class="codename">bool Filter::Write() const {...</div>
+      <div class="codename">bool Filter::Write(bool optimize = true) {...</div>
       <div class="code">
-<div class="codeline">bool Write() <span class="keyword">const</span> {</div>
+<div class="codeline">bool Write(bool optimize = true) {</div>
 <div class="codeline">  <span class="keyword">struct</span> lsmsb_filter_wire wire;</div>
 <div class="codeline">  wire.filter_code = filter_code;</div>
 <div class="codeline">  wire.num_operations = ops.size();</div>
 <div class="codeline">  wire.num_spill_slots = spill_slots;</div>
 <div class="codeline">  wire.num_constants = constants.size();</div>
+<div class="codeline">  <span class="keyword">if</span> (optimize)</div>
+<div class="codeline">    wire.num_constants -= OptimizeConstants();</div>
 <pre>
 </pre>
 <div class="codeline">  <span class="keyword">if</span> (!writea(1, &amp;wire, sizeof(wire)) ||</div>
@@ -2885,6 +3190,8 @@ Serialising a filter</p>
 </pre>
 <div class="codeline">  <span class="keyword">for</span> (std::vector&lt;Constant*&gt;::const_iterator</div>
 <div class="codeline">       i = constants.begin(); i != constants.end(); ++i) {</div>
+<div class="codeline">    <span class="keyword">if</span> (optimize &amp;&amp; !(*i)-&gt;used)</div>
+<div class="codeline">      continue;</div>
 <div class="codeline">    <span class="keyword">if</span> (!(*i)-&gt;Write())</div>
 <div class="codeline">      return false;</div>
 <div class="codeline">  }</div>
@@ -2894,11 +3201,64 @@ Serialising a filter</p>
 <div class="codeline">}</div>
       </div>
       <div class="sectionrefs">
-<a class="sectionref" href="#section-44">44</a> 
+<a class="sectionref" href="#section-48">48</a> 
     </div>
-    <a name="section-68"></a>
-    <div class="section" id="section-68">
-      <p><span class="sectionnumber">68</span>
+    <a name="section-72"></a>
+    <div class="section" id="section-72">
+      <p><span class="sectionnumber">72</span>
+Constant culling</p>
+
+<p>While parsing the code, we kept track of which constants are actually referenced by the filter
+and here we disable those that are not used. Aditionally, we disable small numeric constants which
+fit into an immediate value, by converting <tt>ldc</tt> instructions to <tt>ldi</tt>.  The writer
+will only serialize remaining constants, so we have to adjust all instructions that reference them.
+Finally, we return the number of disabled constants, so the writer may adjust the structures.</p>
+
+      <div class="codename">unsigned Filter::OptimizeConstants() {...</div>
+      <div class="code">
+<div class="codeline"><span class="keyword">unsigned</span> OptimizeConstants() {</div>
+<div class="codeline">  <span class="keyword">unsigned</span> i, j, k = 0;</div>
+<div class="codeline">  <span class="keyword">for</span> (i = 0; i &lt; constants.size(); ++i) {</div>
+<div class="codeline">    <span class="keyword">if</span> (constants[i]-&gt;small) {</div>
+<div class="codeline">      constants[i]-&gt;used = false;</div>
+<div class="codeline">    }</div>
+<div class="codeline">    <span class="keyword">if</span> (!constants[i]-&gt;used) {</div>
+<div class="codeline">      k++;</div>
+<div class="codeline">    } else {</div>
+<div class="codeline">      constants[i]-&gt;gap = k;</div>
+<div class="codeline">    }</div>
+<div class="codeline">  }</div>
+<div class="codeline">  <span class="keyword">for</span> (j = 0; j &lt; ops.size(); ++j) {</div>
+<div class="codeline">    <span class="keyword">uint32_t</span> op = ops[j];</div>
+<div class="codeline">    <span class="keyword">if</span> (lsmsb_op_opcode_get(op) == LSMSB_OPCODE_LDC) {</div>
+<div class="codeline">      <span class="keyword">unsigned</span> gap, c1 = lsmsb_op_constant1_get(op);</div>
+<div class="codeline">      <span class="keyword">if</span> (!constants[c1]-&gt;used) {</div>
+<div class="codeline">        <span class="comment">// We get here because the used flag was cleared above.  It means the</span></div>
+<div class="codeline">        <span class="comment">// constant value is small enough to fit into an immediate.  We could</span></div>
+<div class="codeline">        <span class="comment">// have done this early, in set_const, and leave the constant unused.</span></div>
+<div class="codeline">        <span class="keyword">uint32_t</span> imm = ((U32 *)constants[c1])-&gt;value;</div>
+<div class="codeline">        op &amp;= ~0xFF00FFFF;</div>
+<div class="codeline">        op |= (static_cast&lt;uint32_t&gt;(LSMSB_OPCODE_LDI) &lt;&lt; 24) | imm;</div>
+<div class="codeline">        ops[j] = op;</div>
+<div class="codeline">        continue;</div>
+<div class="codeline">      }</div>
+<div class="codeline">      gap = constants[c1]-&gt;gap;</div>
+<div class="codeline">      <span class="keyword">if</span> (gap) {</div>
+<div class="codeline">        op &amp;= ~0xFF;</div>
+<div class="codeline">        op |= c1 - gap;</div>
+<div class="codeline">        ops[j] = op;</div>
+<div class="codeline">      }</div>
+<div class="codeline">    }</div>
+<div class="codeline">  }</div>
+<div class="codeline">  return k;</div>
+<div class="codeline">}</div>
+      </div>
+      <div class="sectionrefs">
+<a class="sectionref" href="#section-48">48</a> 
+    </div>
+    <a name="section-73"></a>
+    <div class="section" id="section-73">
+      <p><span class="sectionnumber">73</span>
 The <tt>writea</tt> utility function</p>
 
 <p>This is a very thin wrapper around <tt>write</tt> which handles short
@@ -2931,11 +3291,11 @@ writes.</p>
 <div class="codeline">}</div>
       </div>
       <div class="sectionrefs">
-<a class="fileref" href="#section-70">lsmsb-as.rl</a> 
+<a class="fileref" href="#section-75">lsmsb-as.rl</a> 
     </div>
-    <a name="section-69"></a>
-    <div class="section" id="section-69">
-      <p><span class="sectionnumber">69</span>
+    <a name="section-74"></a>
+    <div class="section" id="section-74">
+      <p><span class="sectionnumber">74</span>
 Compatibility with kernel code</p>
 
 <p>Several of the functions which we are using in this code were written for
@@ -2957,10 +3317,10 @@ small shims for them.</p>
 <div class="codeline">void kfree(void* heap) { free(heap); }</div>
       </div>
       <div class="sectionrefs">
-<a class="fileref" href="#section-70">lsmsb-as.rl</a> 
+<a class="fileref" href="#section-75">lsmsb-as.rl</a> 
     </div>
-    <div class="section" id="section-70">
-      <div class="sectionnumber">70</div>
+    <div class="section" id="section-75">
+      <div class="sectionnumber">75</div>
       <div class="outputfile">lsmsb-as.rl</div>
       <div class="code">
 <div class="codeline"><span class="preprocessor">#include &lt;string&gt;</span></div>
@@ -2979,50 +3339,50 @@ small shims for them.</p>
 <div class="codeline"><span class="preprocessor">#include &lt;errno.h&gt;</span></div>
 <pre>
 </pre>
-    <div class="ref"><span class="reftext">Kernel compatibility code</span> <a href="#section-69" class="refnum">69</a></div>
+    <div class="ref"><span class="reftext">Kernel compatibility code</span> <a href="#section-74" class="refnum">74</a></div>
     <div class="ref"><span class="reftext">Value structure</span> <a href="#section-3" class="refnum">3</a></div>
     <div class="ref"><span class="reftext">Filter structure</span> <a href="#section-2" class="refnum">2</a></div>
-    <div class="ref"><span class="reftext">List of operations</span> <a href="#section-4" class="refnum">4</a></div>
     <div class="ref"><span class="reftext">Filter codes</span> <a href="#section-5" class="refnum">5</a></div>
+    <div class="ref"><span class="reftext">List of operations</span> <a href="#section-4" class="refnum">4</a></div>
     <div class="ref"><span class="reftext">Typechecking</span> <a href="#section-6" class="refnum">6</a></div>
     <div class="ref"><span class="reftext">External structures</span> <a href="#section-26" class="refnum">26</a></div>
-    <div class="ref"><span class="reftext"><tt>writea</tt></span> <a href="#section-68" class="refnum">68</a></div>
-    <div class="ref"><span class="reftext">Constant parsing helper functions</span> <a href="#section-50" class="refnum">50</a></div>
-    <div class="ref"><span class="reftext">Helper functions</span> <a href="#section-55" class="refnum">55</a></div>
+    <div class="ref"><span class="reftext"><tt>writea</tt></span> <a href="#section-73" class="refnum">73</a></div>
+    <div class="ref"><span class="reftext">Constant parsing helper functions</span> <a href="#section-54" class="refnum">54</a></div>
+    <div class="ref"><span class="reftext">Helper functions</span> <a href="#section-59" class="refnum">59</a></div>
 <pre>
 </pre>
 <div class="codeline">%%{</div>
 <div class="codeline">  machine as;</div>
 <pre>
 </pre>
-    <div class="ref"><span class="reftext">First chunk of Ragel code</span> <a href="#section-46" class="refnum">46</a></div>
-    <div class="ref"><span class="reftext">Starting to parse a new filter</span> <a href="#section-48" class="refnum">48</a></div>
-    <div class="ref"><span class="reftext">Parsing constants</span> <a href="#section-49" class="refnum">49</a></div>
-    <div class="ref"><span class="reftext">Parsing the spill slots declaration</span> <a href="#section-51" class="refnum">51</a></div>
-    <div class="ref"><span class="reftext">Parsing simple instructions</span> <a href="#section-53" class="refnum">53</a></div>
-    <div class="ref"><span class="reftext">Parsing <tt>ldc</tt></span> <a href="#section-58" class="refnum">58</a></div>
-    <div class="ref"><span class="reftext">Parsing jumps</span> <a href="#section-59" class="refnum">59</a></div>
-    <div class="ref"><span class="reftext">Parsing instructions</span> <a href="#section-52" class="refnum">52</a></div>
-    <div class="ref"><span class="reftext">Parsing a filter</span> <a href="#section-47" class="refnum">47</a></div>
-    <div class="ref"><span class="reftext">Parsing a file</span> <a href="#section-60" class="refnum">60</a></div>
+    <div class="ref"><span class="reftext">First chunk of Ragel code</span> <a href="#section-50" class="refnum">50</a></div>
+    <div class="ref"><span class="reftext">Starting to parse a new filter</span> <a href="#section-52" class="refnum">52</a></div>
+    <div class="ref"><span class="reftext">Parsing constants</span> <a href="#section-53" class="refnum">53</a></div>
+    <div class="ref"><span class="reftext">Parsing the spill slots declaration</span> <a href="#section-55" class="refnum">55</a></div>
+    <div class="ref"><span class="reftext">Parsing simple instructions</span> <a href="#section-57" class="refnum">57</a></div>
+    <div class="ref"><span class="reftext">Parsing <tt>ldc</tt></span> <a href="#section-62" class="refnum">62</a></div>
+    <div class="ref"><span class="reftext">Parsing jumps</span> <a href="#section-63" class="refnum">63</a></div>
+    <div class="ref"><span class="reftext">Parsing instructions</span> <a href="#section-56" class="refnum">56</a></div>
+    <div class="ref"><span class="reftext">Parsing a filter</span> <a href="#section-51" class="refnum">51</a></div>
+    <div class="ref"><span class="reftext">Parsing a file</span> <a href="#section-64" class="refnum">64</a></div>
 <pre>
 </pre>
 <div class="codeline">  write data;</div>
 <div class="codeline">}%%</div>
 <pre>
 </pre>
-    <div class="ref"><span class="reftext">Constant classes</span> <a href="#section-45" class="refnum">45</a></div>
-    <div class="ref"><span class="reftext">Filter structure</span> <a href="#section-44" class="refnum">44</a></div>
-    <div class="ref"><span class="reftext">main</span> <a href="#section-61" class="refnum">61</a></div>
+    <div class="ref"><span class="reftext">Constant classes</span> <a href="#section-49" class="refnum">49</a></div>
+    <div class="ref"><span class="reftext">Filter structure</span> <a href="#section-48" class="refnum">48</a></div>
+    <div class="ref"><span class="reftext">main</span> <a href="#section-65" class="refnum">65</a></div>
       </div>
     </div>
-    <a name="section-71"></a>
-    <div class="section" id="section-71">
-      <p><span class="sectionnumber">71</span>
+    <a name="section-76"></a>
+    <div class="section" id="section-76">
+      <p><span class="sectionnumber">76</span>
 <b>Using a sandbox</b></p>
 
 <p>Once a sandbox has been built, using it is very simple. One needs only to
-write the sandbox to <tt>/proc/self/sandbox</tt>. We provide a very simple
+write the sandbox to <tt>/proc/self/attr/current</tt>. We provide a very simple
 binary which installs a given sandbox and runs a shell within it.</p>
 
 <p>Note that, because sandboxes are composable, this can be done multiple
@@ -3030,9 +3390,9 @@ times.</p>
 
       <div class="codename">Activate a sandbox</div>
       <div class="code">
-<div class="codeline"><span class="keyword">const</span> <span class="keyword">int</span> sandboxfd = open(<span class="string">"/proc/self/sandbox"</span>, O_WRONLY);</div>
+<div class="codeline"><span class="keyword">const</span> <span class="keyword">int</span> sandboxfd = open(<span class="string">"/proc/self/attr/current"</span>, O_WRONLY);</div>
 <div class="codeline"><span class="keyword">if</span> (sandboxfd &lt; 0) {</div>
-<div class="codeline">  perror(<span class="string">"Opening /proc/self/sandbox"</span>);</div>
+<div class="codeline">  perror(<span class="string">"Opening /proc/self/attr/current"</span>);</div>
 <div class="codeline">  return 1;</div>
 <div class="codeline">}</div>
 <pre>
@@ -3043,10 +3403,10 @@ times.</p>
 <div class="codeline">}</div>
       </div>
       <div class="sectionrefs">
-<a class="fileref" href="#section-72">lsmsb-install.c</a> 
+<a class="fileref" href="#section-77">lsmsb-install.c</a> 
     </div>
-    <div class="section" id="section-72">
-      <div class="sectionnumber">72</div>
+    <div class="section" id="section-77">
+      <div class="sectionnumber">77</div>
       <div class="outputfile">lsmsb-install.c</div>
       <div class="code">
 <div class="codeline"><span class="preprocessor">#include &lt;stdint.h&gt;</span></div>
@@ -3087,7 +3447,7 @@ times.</p>
 <div class="codeline">  read(fd, buffer, st.st_size);</div>
 <pre>
 </pre>
-    <div class="ref">  <span class="reftext">Activate a sandbox</span> <a href="#section-71" class="refnum">71</a></div>
+    <div class="ref">  <span class="reftext">Activate a sandbox</span> <a href="#section-76" class="refnum">76</a></div>
 <pre>
 </pre>
 <div class="codeline">  fprintf(stderr, <span class="string">"Sandbox installed\n"</span>);</div>

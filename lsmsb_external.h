@@ -6,7 +6,7 @@ struct lsmsb_filter_wire {
 };
 
 struct lsmsb_constant_wire {
-	uint8_t type;  // 0 for integer, 1 for bytestring
+	uint32_t type;  // 0 for integer, 1 for bytestring
 	uint32_t value;
 	/* In the case of a bytestring, the bytes follow and |value| is the length */
 };

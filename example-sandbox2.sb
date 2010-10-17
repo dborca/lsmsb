@@ -1,11 +1,11 @@
 filter dentry-open {
   constants {
-    var etc-prefix bytestring = "/etc/";
+    etc-prefix = "/etc/";
   }
 
   ldc r2,etc-prefix;
   isprefixof r2,r2,r0;
-  jc r2,#fail;
+  jnz r2,#fail;
   ldi r0,1;
   ret r0;
 #fail:

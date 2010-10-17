@@ -1694,8 +1694,8 @@ static int lsmsb_socket_create(int family, int type, int protocol, int kern)
 @/ The <tt>socket_connect</tt> hook
 
 <p><tt>socket_connect</tt> is called when a process connects a socket. If the
-socket is AF_INET, then the filter receives port number in r3 and IP address
-in r4. For other socket types, those parameters are set to zero.<p>
+socket is AF_INET, then the filter receives port number in <tt>r3</tt> and IP address
+in <tt>r4</tt>. For other socket types, those parameters are set to zero.<p>
 
 @<socket_connect hook@>=
 static int lsmsb_socket_connect(struct socket *sock,

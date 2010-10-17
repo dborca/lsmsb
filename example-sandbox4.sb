@@ -1,0 +1,22 @@
+filter socket-connect {
+  constants {
+    AF_UNIX = 1;
+    AF_INET = 2;
+    localnet = 0x7F000000;
+  }
+
+  ldc r6, AF_UNIX;
+  eq  r0, r1, r6;
+  jnz r0, #done;
+
+  ldc r6, AF_INET;
+  eq  r0, r1, r6;
+  jz  r0, #done;
+
+  ldc r6, localnet;
+  and r0, r4, r6;
+  eq  r0, r0, r6;
+
+#done:
+  ret r0;
+}

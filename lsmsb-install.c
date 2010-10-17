@@ -29,9 +29,9 @@ main(int argc, char **argv) {
   uint8_t *buffer = malloc(st.st_size);
   read(fd, buffer, st.st_size);
 
-  const int sandboxfd = open("/proc/self/sandbox", O_WRONLY);
+  const int sandboxfd = open("/proc/self/attr/current", O_WRONLY);
   if (sandboxfd < 0) {
-    perror("Opening /proc/self/sandbox");
+    perror("Opening /proc/self/attr/current");
     return 1;
   }
 
