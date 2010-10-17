@@ -10,7 +10,7 @@
     <h1>LSMSB: A Linux Sandboxing Scheme</h1>
 
 <p>Adam Langley (<tt>agl@google.com</tt>)<br>
-Version <tt>20090606</tt></p>
+Version <tt>20101017</tt> - Daniel Borca (<tt>dborca@yahoo.com</tt>)</p>
 
 @@TOC
 
