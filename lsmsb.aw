@@ -1759,7 +1759,7 @@ struct ByteString : public Constant {
   bool Write() const {
     struct lsmsb_constant_wire wire;
 
-    wire.type = 1;
+    wire.type = TYPE_BYTESTRING;
     wire.value = value.size();
 
     if (!writea(1, &wire, sizeof(wire)) ||
@@ -1780,13 +1780,13 @@ struct U32 : public Constant {
   }
 
   Type type() const {
-    return TYPE_BYTESTRING;
+    return TYPE_U32;
   }
 
   bool Write() const {
     struct lsmsb_constant_wire wire;
 
-    wire.type = 0;
+    wire.type = TYPE_U32;
     wire.value = value;
 
     if (!writea(1, &wire, sizeof(wire)))
