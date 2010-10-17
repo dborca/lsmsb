@@ -172,7 +172,7 @@ struct lsmsb_value {
   <tr><td><tt>JMP</tt></td> <td>Jump</td> <td>Skips the next <i>n</i> rules</td></tr>
   <tr><td><tt>SPILL</tt></td> <td>Spill register</td> <td>spill<sub>1</sub> = reg<sub>1</sub></td></tr>
   <tr><td><tt>UNSPILL</tt></td> <td>Unspill register</td> <td>reg<sub>1</sub> = spill<sub>1</sub></td></tr>
-  <tr><td><tt>JC</tt></td> <td>Jump conditionally</td> <td>If reg<sub>1</sub> &gt; 0 then skip the next <i>n</i> rules</td></tr>
+  <tr><td><tt>JNZ</tt></td> <td>Jump conditionally</td> <td>If reg<sub>1</sub> != 0 then skip the next <i>n</i> rules</td></tr>
   <tr><td><tt>EQ</tt></td> <td>Equal?</td> <td>reg<sub>1</sub> = reg<sub>2</sub> == reg<sub>3</sub></td></tr>
   <tr><td><tt>GT</tt></td> <td>Greater than?</td> <td>reg<sub>1</sub> = reg<sub>2</sub> &gt; reg<sub>3</sub></td></tr>
   <tr><td><tt>LT</tt></td> <td>Less than?</td> <td>reg<sub>1</sub> = reg<sub>2</sub> &lt; reg<sub>3</sub></td></tr>
@@ -193,7 +193,7 @@ enum lsmsb_opcode {
 	LSMSB_OPCODE_JMP,
 	LSMSB_OPCODE_SPILL,
 	LSMSB_OPCODE_UNSPILL,
-	LSMSB_OPCODE_JC,
+	LSMSB_OPCODE_JNZ,
 	LSMSB_OPCODE_EQ,
 	LSMSB_OPCODE_GT,
 	LSMSB_OPCODE_LT,
@@ -571,7 +571,7 @@ static char lsmsb_op_type_vector_update(uint8_t *tv, uint32_t op,
 			return 0;
 		lsmsb_type_vector_reg_set(tv, reg1, type1);
 		return 1;
-	case LSMSB_OPCODE_JC:
+	case LSMSB_OPCODE_JNZ:
 		reg1 = lsmsb_op_reg1_get(op);
 		if (lsmsb_type_vector_reg_get(tv, reg1) != LSMSB_TYPE_U32)
 			return 0;
@@ -923,7 +923,7 @@ char lsmsb_filter_run(const struct lsmsb_filter *filter,
 			memcpy(&regs[reg1], &spills[s1],
 			       sizeof(struct lsmsb_value));
 			break;
-		case LSMSB_OPCODE_JC:
+		case LSMSB_OPCODE_JNZ:
 			reg1 = lsmsb_op_reg1_get(op);
 			if (regs[reg1].value) {
 				ip--;
@@ -1026,13 +1026,13 @@ static inline char lsmsb_opcode_falls_through(enum lsmsb_opcode opcode)
 
 static inline unsigned lsmsb_opcode_is_jump(enum lsmsb_opcode opcode)
 {
-	return opcode == LSMSB_OPCODE_JMP || opcode == LSMSB_OPCODE_JC;
+	return opcode == LSMSB_OPCODE_JMP || opcode == LSMSB_OPCODE_JNZ;
 }
 
 static inline unsigned lsmsb_op_jump_length(uint32_t op)
 {
 	const unsigned opcode = op >> 24;
-	if (opcode == LSMSB_OPCODE_JMP || opcode == LSMSB_OPCODE_JC)
+	if (opcode == LSMSB_OPCODE_JMP || opcode == LSMSB_OPCODE_JNZ)
 		return op & 0xff;
 	return 0;
 }
@@ -1656,7 +1656,7 @@ argument (which requests write access) and fails if it's set.</p>
 filter dentry-open {
   ldi r2,1;
   and r2,r1,r2;
-  jc r2,#fail;
+  jnz r2,#fail;
   ldi r0,1;
   ret r0;
 #fail:
@@ -1683,7 +1683,7 @@ filter dentry-open {
 
   ldc r2,etc-prefix;
   isprefixof r2,r2,r0;
-  jc r2,#fail;
+  jnz r2,#fail;
   ldi r0,1;
   ret r0;
 #fail:
@@ -1952,7 +1952,7 @@ in the filter. Since all our jumps are forwards, jump resolution is simple and
 we do everything in a single pass.</p>
 
 @<Parsing instructions@>=
-  inst = jump_target | and | ldc | ldi | jc | jmp | isprefixof | ret;
+  inst = jump_target | and | ldc | ldi | jnz | jmp | isprefixof | ret;
 
 @/ Parsing simple instructions
 
@@ -2118,10 +2118,10 @@ offset for each instruction which jumps there.</p>
   }
   jmp = ("jmp" %opcode_jmp) . ws . '#' . (token >start %jmp_mark) . ws . (";" %push_op) . ws;
 
-  action opcode_jc {
-    op |= static_cast<uint32_t>(LSMSB_OPCODE_JC) << 24;
+  action opcode_jnz {
+    op |= static_cast<uint32_t>(LSMSB_OPCODE_JNZ) << 24;
   }
-  jc = ("jc" %opcode_jc) . ws . (reg >start %set_reg1) . ws . "," . ws . '#' . (token >start %jmp_mark) . ws . (";" %push_op) . ws;
+  jnz = ("jnz" %opcode_jnz) . ws . (reg >start %set_reg1) . ws . "," . ws . '#' . (token >start %jmp_mark) . ws . (";" %push_op) . ws;
 
   action jump_resolve {
     const std::string target = std::string(start, fpc - start);
