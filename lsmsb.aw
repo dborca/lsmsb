@@ -814,7 +814,7 @@ static inline void lsmsb_type_vector_spill_set(uint8_t *vector, unsigned slot,
 
 @<Typecheck function@>=
 
-int lsmsb_filter_typecheck(const struct lsmsb_filter *filter,
+static int lsmsb_filter_typecheck(const struct lsmsb_filter *filter,
 			   const uint8_t *context_type_vector)
 {
 	const unsigned tva_width = lsmsb_filter_tva_width(filter);
@@ -865,7 +865,7 @@ could make this code faster but, for now, we choose the simplest code that
 works.</p>
 
 @<Evaluating filters@>=
-char lsmsb_filter_run(const struct lsmsb_filter *filter,
+static char lsmsb_filter_run(const struct lsmsb_filter *filter,
 		      const struct lsmsb_value *init_values,
 		      unsigned num_init_values)
 {
@@ -1119,7 +1119,7 @@ struct filter_context {
   const char *type_string;
 };
 
-const struct filter_context filter_contexts[] = {
+static const struct filter_context filter_contexts[] = {
   {"dentry-open", "BI"}, // LSMSB_FILTER_CODE_DENTRY_OPEN
   {"socket-create", "IIII"}, // LSMSB_FILTER_CODE_SOCKET_CREATE
   {"socket-connect", "IIIIIB"}, // LSMSB_FILTER_CODE_SOCKET_CONNECT
@@ -1761,7 +1761,7 @@ static int lsmsb_socket_connect(struct socket *sock,
 @/
 
 @<LSM operations structure@>=
-struct security_operations lsmsb_ops = {
+static struct security_operations lsmsb_ops = {
 	.name   	= "lsmsb",
 	.setprocattr    = lsmsb_setprocattr,
 	.getprocattr    = lsmsb_getprocattr,
