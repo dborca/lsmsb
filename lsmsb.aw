@@ -1911,19 +1911,19 @@ filter socket-connect {
   }
 
   ldc r6, AF_UNIX;
-  eq  r0, r1, r6;
-  jnz r0, #done;
+  eq  r7, r0, r6;
+  jnz r7, #done;
 
   ldc r6, AF_INET;
-  eq  r0, r1, r6;
-  jz  r0, #done;
+  eq  r7, r0, r6;
+  jz  r7, #done;
 
   ldc r6, localnet;
-  and r0, r4, r6;
-  eq  r0, r0, r6;
+  and r7, r4, r6;
+  eq  r7, r7, r6;
 
 #done:
-  ret r0;
+  ret r7;
 }
 
 @/ The filter structure
