@@ -1705,7 +1705,7 @@ static int lsmsb_socket_connect(struct socket *sock,
 	const struct lsmsb_sandbox *sandbox;
 	const struct lsmsb_filter *filter;
 	struct lsmsb_value registers[6];
-	const struct sock *sk = sock->sk;
+	const struct sock *sk;
 
 	if (!cred->security)
 		return 0;
@@ -1721,6 +1721,7 @@ static int lsmsb_socket_connect(struct socket *sock,
 	if (!sandbox)
 		return 0;
 	
+	sk = sock->sk;
 	if (!sk)
 		return 0;
 	registers[0].data = NULL;
