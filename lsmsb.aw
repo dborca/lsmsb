@@ -2184,7 +2184,7 @@ in the filter. Since all our jumps are forwards, jump resolution is simple and
 we do everything in a single pass.</p>
 
 @<Parsing instructions@>=
-  inst = jump_target | and | eq | ldc | ldi | jnz | jz | jmp | isprefixof | ret;
+  inst = jump_target | and | xor | eq | ldc | ldi | jnz | jz | jmp | isprefixof | ret;
 
 @/ Parsing simple instructions
 
@@ -2270,6 +2270,15 @@ filter:</p>
     op |= static_cast<uint32_t>(LSMSB_OPCODE_AND) << 24;
   }
   and = ("and" %opcode_and) . ws .
+        (reg >start %set_reg1) . ws . "," . ws .
+        (reg >start %set_reg2) . ws . "," . ws .
+        (reg >start %set_reg3) . ws .
+        (";" %push_op) . ws;
+
+  action opcode_xor {
+    op |= static_cast<uint32_t>(LSMSB_OPCODE_XOR) << 24;
+  }
+  xor = ("xor" %opcode_xor) . ws .
         (reg >start %set_reg1) . ws . "," . ws .
         (reg >start %set_reg2) . ws . "," . ws .
         (reg >start %set_reg3) . ws .
