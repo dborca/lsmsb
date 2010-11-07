@@ -10,7 +10,7 @@
     <h1>LSMSB: A Linux Sandboxing Scheme</h1>
 
 <p>Adam Langley (<tt>agl@google.com</tt>)<br>
-Version <tt>20101017</tt> - Daniel Borca (<tt>dborca@yahoo.com</tt>)</p>
+Version <tt>20101017</tt> - Daniel Borca (<tt>dborca@yahoo.com</tt>)<br>
 Version <tt>20101107</tt> - Daniel Borca (<tt>dborca@yahoo.com</tt>)</p>
 
 <ol class="toc"><li><a href="#section-1">Kernel code</a><ol class="toc"><li><a href="#section-6">Typechecking.</a></li><li><a href="#section-21">Evaluating filters</a></li><li><a href="#section-27">Installing the sandbox</a></li><li><a href="#section-32">Interfacing with LSM</a></li></ol></li><li><a href="#section-42">The assembler</a><ol class="toc"><li><a href="#section-50">Parsing</a></li></ol></li><li><a href="#section-76">Using a sandbox</a></li></ol>
@@ -1682,8 +1682,10 @@ Installing a filter</p>
 </pre>
 <div class="codeline">        <span class="keyword">switch</span> (filter_wire.filter_code) {</div>
 <div class="codeline">        <span class="keyword">case</span> LSMSB_FILTER_CODE_DENTRY_OPEN:</div>
+<div class="codeline"><span class="preprocessor">#ifdef CONFIG_SECURITY_NETWORK</span></div>
 <div class="codeline">        <span class="keyword">case</span> LSMSB_FILTER_CODE_SOCKET_CREATE:</div>
 <div class="codeline">        <span class="keyword">case</span> LSMSB_FILTER_CODE_SOCKET_CONNECT:</div>
+<div class="codeline"><span class="preprocessor">#endif</span></div>
 <div class="codeline">                <span class="keyword">if</span> (sandbox-&gt;filters[filter_wire.filter_code]) {</div>
 <div class="codeline">                        return_code = -EINVAL;</div>
 <div class="codeline">                        goto error;</div>
@@ -1897,14 +1899,10 @@ of the filesystem.</p>
 <div class="codeline">{</div>
 <div class="codeline">        <span class="keyword">const</span> <span class="keyword">struct</span> lsmsb_sandbox *sandbox;</div>
 <div class="codeline">        <span class="keyword">const</span> <span class="keyword">struct</span> lsmsb_filter *filter;</div>
-<div class="codeline">        <span class="keyword">char</span> buffer[512];</div>
 <div class="codeline">        <span class="keyword">struct</span> lsmsb_value registers[2];</div>
-<pre>
-</pre>
-<div class="codeline">        <span class="keyword">struct</span> path root;</div>
-<div class="codeline">        <span class="keyword">struct</span> path ns_root = { };</div>
-<div class="codeline">        <span class="keyword">struct</span> path tmp;</div>
-<div class="codeline">        <span class="keyword">char</span> *sp;</div>
+<div class="codeline">        <span class="keyword">const</span> <span class="keyword">char</span> *sp;</div>
+<div class="codeline">        <span class="keyword">char</span> *buffer;</div>
+<div class="codeline">        <span class="keyword">int</span> rv;</div>
 <pre>
 </pre>
 <div class="codeline">        <span class="keyword">if</span> (!cred-&gt;security)</div>
@@ -1923,25 +1921,13 @@ of the filesystem.</p>
 <div class="codeline">        <span class="keyword">if</span> (!sandbox)</div>
 <div class="codeline">                return 0;</div>
 <div class="codeline">        </div>
-<div class="codeline">        /* Taken from d_namespace_path(). */</div>
-<div class="codeline">        read_lock(&amp;current-&gt;fs-&gt;lock);</div>
-<div class="codeline">        root = current-&gt;fs-&gt;root;</div>
-<div class="codeline">        path_get(&amp;root);</div>
-<div class="codeline">        read_unlock(&amp;current-&gt;fs-&gt;lock);</div>
-<div class="codeline">        spin_lock(&amp;vfsmount_lock);</div>
-<div class="codeline">        <span class="keyword">if</span> (root.mnt &amp;&amp; root.mnt-&gt;mnt_ns)</div>
-<div class="codeline">                ns_root.mnt = mntget(root.mnt-&gt;mnt_ns-&gt;root);</div>
-<div class="codeline">        <span class="keyword">if</span> (ns_root.mnt)</div>
-<div class="codeline">                ns_root.dentry = dget(ns_root.mnt-&gt;mnt_root);</div>
-<div class="codeline">        spin_unlock(&amp;vfsmount_lock);</div>
-<div class="codeline">        spin_lock(&amp;dcache_lock);</div>
-<div class="codeline">        tmp = ns_root;</div>
-<div class="codeline">        sp = __d_path(&amp;f-&gt;f_path, &amp;tmp, buffer, sizeof(buffer));</div>
-<div class="codeline">        spin_unlock(&amp;dcache_lock);</div>
-<div class="codeline">        path_put(&amp;root);</div>
-<div class="codeline">        path_put(&amp;ns_root);</div>
+<div class="codeline">        rv = sb_get_name(&amp;f-&gt;f_path, 0, &amp;buffer, &amp;sp);</div>
+<div class="codeline">        <span class="keyword">if</span> (rv) {</div>
+<div class="codeline">                kfree(buffer);</div>
+<div class="codeline">                return -EINVAL;</div>
+<div class="codeline">        }</div>
 <div class="codeline">        </div>
-<div class="codeline">        registers[0].data = sp;</div>
+<div class="codeline">        registers[0].data = (void *)sp;</div>
 <div class="codeline">        registers[0].value = strlen(sp);</div>
 <div class="codeline">        registers[1].data = NULL;</div>
 <div class="codeline">        registers[1].value = f-&gt;f_flags;</div>
@@ -1952,6 +1938,7 @@ of the filesystem.</p>
 <div class="codeline">                <span class="keyword">if</span> (filter) {</div>
 <div class="codeline">                        <span class="keyword">if</span> (!lsmsb_filter_run(filter, registers,</div>
 <div class="codeline">                                              ARRAY_SIZE(registers))) {</div>
+<div class="codeline">                                kfree(buffer);</div>
 <div class="codeline">                                return -EPERM;</div>
 <div class="codeline">                        }</div>
 <div class="codeline">                }</div>
@@ -1961,6 +1948,7 @@ of the filesystem.</p>
 <div class="codeline">        }</div>
 <pre>
 </pre>
+<div class="codeline">        kfree(buffer);</div>
 <div class="codeline">        return 0;</div>
 <div class="codeline">}</div>
       </div>
@@ -2124,8 +2112,10 @@ in <tt>r4</tt>. For other socket types, those parameters are set to zero.<p>
 <div class="codeline">        .setprocattr    = lsmsb_setprocattr,</div>
 <div class="codeline">        .getprocattr    = lsmsb_getprocattr,</div>
 <div class="codeline">        .dentry_open    = lsmsb_dentry_open,</div>
+<div class="codeline"><span class="preprocessor">#ifdef CONFIG_SECURITY_NETWORK</span></div>
 <div class="codeline">        .socket_create  = lsmsb_socket_create,</div>
 <div class="codeline">        .socket_connect = lsmsb_socket_connect,</div>
+<div class="codeline"><span class="preprocessor">#endif</span></div>
 <div class="codeline">        .cred_prepare   = lsmsb_cred_prepare,</div>
 <div class="codeline">        .cred_free      = lsmsb_cred_free,</div>
 <div class="codeline">};</div>
@@ -2185,6 +2175,7 @@ Initialising the module</p>
 <div class="codeline"><span class="preprocessor">#include &lt;linux/uaccess.h&gt;</span></div>
 <pre>
 </pre>
+<div class="codeline"><span class="preprocessor">#include "path.h"</span></div>
 <div class="codeline"><span class="preprocessor">#include "lsmsb_external.h"</span></div>
 <pre>
 </pre>
