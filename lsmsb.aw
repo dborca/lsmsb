@@ -2172,6 +2172,10 @@ u32_parse(const std::string &in) {
 @<Parsing the spill slots declaration@>=
   action set_spill_slots {
     current_filter->spill_slots = u32_parse(std::string(start, fpc - start));
+    if (current_filter->spill_slots > LSMSB_SPILL_SLOTS_MAX) {
+      fprintf(stderr, "Error line %u: Invalid number of spill slots: %d\n", line_no, current_filter->spill_slots);
+      abort();
+    }
   }
 
   spillslots = "spill-slots" . ws . (u32 >start %set_spill_slots) . ws . ";" . ws;
@@ -2206,6 +2210,7 @@ so we start with a bunch of helper actions for setting various parts of
 
 @<set_reg-helpers|Helper actions@>=
   reg = "r" digit+;
+  slot = "s" digit+;
 
   action set_reg1 {
     op |= reg_parse(std::string(start, fpc - start), LSMSB_NUM_REGISTERS) << 20;
@@ -2215,6 +2220,12 @@ so we start with a bunch of helper actions for setting various parts of
   }
   action set_reg3 {
     op |= reg_parse(std::string(start, fpc - start), LSMSB_NUM_REGISTERS) << 12;
+  }
+  action set_spill1 {
+    op |= reg_parse(std::string(start, fpc - start), current_filter->spill_slots) << 16;
+  }
+  action set_spill2 {
+    op |= reg_parse(std::string(start, fpc - start), current_filter->spill_slots) << 12;
   }
   action set_imm {
     op |= imm_check(u32_parse(std::string(start, fpc - start)));
