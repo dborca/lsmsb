@@ -2267,40 +2267,37 @@ filter:</p>
   }
   ret = ("ret" %opcode_ret) . ws . (reg >start %set_reg1) . ws . (";" %push_op) . ws;
 
+  reg_operands =
+        (reg >start %set_reg1) . ws . "," . ws .
+        (reg >start %set_reg2) . ws . "," . ws .
+        (reg >start %set_reg3);
+
   action opcode_and {
     op |= static_cast<uint32_t>(LSMSB_OPCODE_AND) << 24;
   }
   and = ("and" %opcode_and) . ws .
-        (reg >start %set_reg1) . ws . "," . ws .
-        (reg >start %set_reg2) . ws . "," . ws .
-        (reg >start %set_reg3) . ws .
+        reg_operands . ws .
         (";" %push_op) . ws;
 
   action opcode_xor {
     op |= static_cast<uint32_t>(LSMSB_OPCODE_XOR) << 24;
   }
   xor = ("xor" %opcode_xor) . ws .
-        (reg >start %set_reg1) . ws . "," . ws .
-        (reg >start %set_reg2) . ws . "," . ws .
-        (reg >start %set_reg3) . ws .
+        reg_operands . ws .
         (";" %push_op) . ws;
 
   action opcode_eq {
     op |= static_cast<uint32_t>(LSMSB_OPCODE_EQ) << 24;
   }
   eq = ("eq" %opcode_eq) . ws .
-        (reg >start %set_reg1) . ws . "," . ws .
-        (reg >start %set_reg2) . ws . "," . ws .
-        (reg >start %set_reg3) . ws .
+        reg_operands . ws .
         (";" %push_op) . ws;
 
   action opcode_isprefixof {
     op |= static_cast<uint32_t>(LSMSB_OPCODE_ISPREFIXOF) << 24;
   }
   isprefixof = ("isprefixof" %opcode_isprefixof) . ws .
-               (reg >start %set_reg1) . ws . "," . ws .
-               (reg >start %set_reg2) . ws . "," . ws .
-               (reg >start %set_reg3) . ws .
+               reg_operands . ws .
                (";" %push_op) . ws;
 
 @/ Parsing <tt>ldc</tt>
