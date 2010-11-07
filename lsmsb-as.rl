@@ -480,7 +480,7 @@ struct filter_context {
   const char *type_string;
 };
 
-const struct filter_context filter_contexts[] = {
+static const struct filter_context filter_contexts[] = {
   {"dentry-open", "BI"}, // LSMSB_FILTER_CODE_DENTRY_OPEN
   {"socket-create", "IIII"}, // LSMSB_FILTER_CODE_SOCKET_CREATE
   {"socket-connect", "IIIIIB"}, // LSMSB_FILTER_CODE_SOCKET_CONNECT
@@ -514,7 +514,7 @@ static uint8_t *type_vector_for_filter(const struct lsmsb_filter *filter,
 	}
 }
 
-int lsmsb_filter_typecheck(const struct lsmsb_filter *filter,
+static int lsmsb_filter_typecheck(const struct lsmsb_filter *filter,
 			   const uint8_t *context_type_vector)
 {
 	const unsigned tva_width = lsmsb_filter_tva_width(filter);
@@ -625,8 +625,13 @@ imm_check(uint32_t v) {
 }
 
 static uint32_t
-reg_parse(const std::string &r) {
-  return strtoul(r.c_str() + 1, NULL, 10);
+reg_parse(const std::string &r, uint32_t max) {
+  uint32_t n = strtoul(r.c_str() + 1, NULL, 10);
+  if (n >= max) {
+    fprintf(stderr, "Invalid register: %s\n", r.c_str());
+    abort();
+  }
+  return n;
 }
 
 %%{
@@ -693,20 +698,31 @@ reg_parse(const std::string &r) {
 
   action set_spill_slots {
     current_filter->spill_slots = u32_parse(std::string(start, fpc - start));
+    if (current_filter->spill_slots > LSMSB_SPILL_SLOTS_MAX) {
+      fprintf(stderr, "Error line %u: Invalid number of spill slots: %d\n", line_no, current_filter->spill_slots);
+      abort();
+    }
   }
 
   spillslots = "spill-slots" . ws . (u32 >start %set_spill_slots) . ws . ";" . ws;
 
   reg = "r" digit+;
+  slot = "s" digit+;
 
   action set_reg1 {
-    op |= reg_parse(std::string(start, fpc - start)) << 20;
+    op |= reg_parse(std::string(start, fpc - start), LSMSB_NUM_REGISTERS) << 20;
   }
   action set_reg2 {
-    op |= reg_parse(std::string(start, fpc - start)) << 16;
+    op |= reg_parse(std::string(start, fpc - start), LSMSB_NUM_REGISTERS) << 16;
   }
   action set_reg3 {
-    op |= reg_parse(std::string(start, fpc - start)) << 12;
+    op |= reg_parse(std::string(start, fpc - start), LSMSB_NUM_REGISTERS) << 12;
+  }
+  action set_spill1 {
+    op |= reg_parse(std::string(start, fpc - start), current_filter->spill_slots) << 16;
+  }
+  action set_spill2 {
+    op |= reg_parse(std::string(start, fpc - start), current_filter->spill_slots) << 12;
   }
   action set_imm {
     op |= imm_check(u32_parse(std::string(start, fpc - start)));
@@ -715,6 +731,21 @@ reg_parse(const std::string &r) {
     current_filter->ops.push_back(op);
     op = 0;
   }
+  action opcode_mov {
+    op |= static_cast<uint32_t>(LSMSB_OPCODE_MOV) << 24;
+  }
+  mov = ("mov" %opcode_mov) . ws . (reg >start %set_reg1) . "," . ws . (reg >start %set_reg2) . ws . (";" %push_op) . ws;
+
+  action opcode_spill {
+    op |= static_cast<uint32_t>(LSMSB_OPCODE_SPILL) << 24;
+  }
+  spill = ("spill" %opcode_spill) . ws . (slot >start %set_spill1) . "," . ws . (reg >start %set_reg3) . ws . (";" %push_op) . ws;
+
+  action opcode_unspill {
+    op |= static_cast<uint32_t>(LSMSB_OPCODE_UNSPILL) << 24;
+  }
+  unspill = ("unspill" %opcode_unspill) . ws . (reg >start %set_reg1) . "," . ws . (slot >start %set_spill2) . ws . (";" %push_op) . ws;
+
   action opcode_ldi {
     op |= static_cast<uint32_t>(LSMSB_OPCODE_LDI) << 24;
   }
@@ -725,31 +756,79 @@ reg_parse(const std::string &r) {
   }
   ret = ("ret" %opcode_ret) . ws . (reg >start %set_reg1) . ws . (";" %push_op) . ws;
 
+  reg_operands =
+        (reg >start %set_reg1) . ws . "," . ws .
+        (reg >start %set_reg2) . ws . "," . ws .
+        (reg >start %set_reg3);
+
   action opcode_and {
     op |= static_cast<uint32_t>(LSMSB_OPCODE_AND) << 24;
   }
   and = ("and" %opcode_and) . ws .
-        (reg >start %set_reg1) . ws . "," . ws .
-        (reg >start %set_reg2) . ws . "," . ws .
-        (reg >start %set_reg3) . ws .
+        reg_operands . ws .
+        (";" %push_op) . ws;
+
+  action opcode_or {
+    op |= static_cast<uint32_t>(LSMSB_OPCODE_OR) << 24;
+  }
+  or = ("or" %opcode_or) . ws .
+        reg_operands . ws .
+        (";" %push_op) . ws;
+
+  action opcode_xor {
+    op |= static_cast<uint32_t>(LSMSB_OPCODE_XOR) << 24;
+  }
+  xor = ("xor" %opcode_xor) . ws .
+        reg_operands . ws .
         (";" %push_op) . ws;
 
   action opcode_eq {
     op |= static_cast<uint32_t>(LSMSB_OPCODE_EQ) << 24;
   }
   eq = ("eq" %opcode_eq) . ws .
-        (reg >start %set_reg1) . ws . "," . ws .
-        (reg >start %set_reg2) . ws . "," . ws .
-        (reg >start %set_reg3) . ws .
+        reg_operands . ws .
+        (";" %push_op) . ws;
+
+  action opcode_ne {
+    op |= static_cast<uint32_t>(LSMSB_OPCODE_NE) << 24;
+  }
+  ne = ("ne" %opcode_ne) . ws .
+        reg_operands . ws .
+        (";" %push_op) . ws;
+
+  action opcode_gt {
+    op |= static_cast<uint32_t>(LSMSB_OPCODE_GT) << 24;
+  }
+  gt = ("gt" %opcode_gt) . ws .
+        reg_operands . ws .
+        (";" %push_op) . ws;
+
+  action opcode_lt {
+    op |= static_cast<uint32_t>(LSMSB_OPCODE_LT) << 24;
+  }
+  lt = ("lt" %opcode_lt) . ws .
+        reg_operands . ws .
+        (";" %push_op) . ws;
+
+  action opcode_gte {
+    op |= static_cast<uint32_t>(LSMSB_OPCODE_GTE) << 24;
+  }
+  gte = ("gte" %opcode_gte) . ws .
+        reg_operands . ws .
+        (";" %push_op) . ws;
+
+  action opcode_lte {
+    op |= static_cast<uint32_t>(LSMSB_OPCODE_LTE) << 24;
+  }
+  lte = ("lte" %opcode_lte) . ws .
+        reg_operands . ws .
         (";" %push_op) . ws;
 
   action opcode_isprefixof {
     op |= static_cast<uint32_t>(LSMSB_OPCODE_ISPREFIXOF) << 24;
   }
   isprefixof = ("isprefixof" %opcode_isprefixof) . ws .
-               (reg >start %set_reg1) . ws . "," . ws .
-               (reg >start %set_reg2) . ws . "," . ws .
-               (reg >start %set_reg3) . ws .
+               reg_operands . ws .
                (";" %push_op) . ws;
 
   action set_const {
@@ -821,7 +900,7 @@ reg_parse(const std::string &r) {
   }
   jump_target = '#' . (token >start %jump_resolve) . ':' . ws;
 
-  inst = jump_target | and | eq | ldc | ldi | jnz | jz | jmp | isprefixof | ret;
+  inst = jump_target | mov | spill | unspill | and | or | xor | eq | ne | gt | lt | gte | lte | ldc | ldi | jnz | jz | jmp | isprefixof | ret;
 
   filter = "filter" . ws . (token >start %filter_new) . ws . "{" . ws . constants? . spillslots? . inst* . ("}" @filter_push) . ws;
 
@@ -955,7 +1034,7 @@ struct Filter {
           // constant value is small enough to fit into an immediate.  We could
           // have done this early, in set_const, and leave the constant unused.
           uint32_t imm = ((U32 *)constants[c1])->value;
-          op &= ~0xFF00FFFF;
+          op &= ~0xFF0FFFFF;
           op |= (static_cast<uint32_t>(LSMSB_OPCODE_LDI) << 24) | imm;
           ops[j] = op;
           continue;

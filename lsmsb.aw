@@ -11,6 +11,7 @@
 
 <p>Adam Langley (<tt>agl@google.com</tt>)<br>
 Version <tt>20101017</tt> - Daniel Borca (<tt>dborca@yahoo.com</tt>)</p>
+Version <tt>20101107</tt> - Daniel Borca (<tt>dborca@yahoo.com</tt>)</p>
 
 @@TOC
 

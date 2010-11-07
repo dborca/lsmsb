@@ -475,7 +475,7 @@ struct filter_context {
   const char *type_string;
 };
 
-const struct filter_context filter_contexts[] = {
+static const struct filter_context filter_contexts[] = {
   {"dentry-open", "BI"}, // LSMSB_FILTER_CODE_DENTRY_OPEN
   {"socket-create", "IIII"}, // LSMSB_FILTER_CODE_SOCKET_CREATE
   {"socket-connect", "IIIIIB"}, // LSMSB_FILTER_CODE_SOCKET_CONNECT
@@ -509,7 +509,7 @@ static uint8_t *type_vector_for_filter(const struct lsmsb_filter *filter,
 	}
 }
 
-int lsmsb_filter_typecheck(const struct lsmsb_filter *filter,
+static int lsmsb_filter_typecheck(const struct lsmsb_filter *filter,
 			   const uint8_t *context_type_vector)
 {
 	const unsigned tva_width = lsmsb_filter_tva_width(filter);
@@ -548,7 +548,7 @@ exit:
 	return return_code;
 }
 
-char lsmsb_filter_run(const struct lsmsb_filter *filter,
+static char lsmsb_filter_run(const struct lsmsb_filter *filter,
 		      const struct lsmsb_value *init_values,
 		      unsigned num_init_values)
 {
@@ -1077,7 +1077,7 @@ static int lsmsb_socket_connect(struct socket *sock,
 	const struct lsmsb_sandbox *sandbox;
 	const struct lsmsb_filter *filter;
 	struct lsmsb_value registers[6];
-	const struct sock *sk = sock->sk;
+	const struct sock *sk;
 
 	if (!cred->security)
 		return 0;
@@ -1093,6 +1093,7 @@ static int lsmsb_socket_connect(struct socket *sock,
 	if (!sandbox)
 		return 0;
 	
+	sk = sock->sk;
 	if (!sk)
 		return 0;
 	registers[0].data = NULL;
@@ -1130,7 +1131,7 @@ static int lsmsb_socket_connect(struct socket *sock,
 	return 0;
 }
 
-struct security_operations lsmsb_ops = {
+static struct security_operations lsmsb_ops = {
 	.name   	= "lsmsb",
 	.setprocattr    = lsmsb_setprocattr,
 	.getprocattr    = lsmsb_getprocattr,

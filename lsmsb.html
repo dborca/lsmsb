@@ -11,6 +11,7 @@
 
 <p>Adam Langley (<tt>agl@google.com</tt>)<br>
 Version <tt>20101017</tt> - Daniel Borca (<tt>dborca@yahoo.com</tt>)</p>
+Version <tt>20101107</tt> - Daniel Borca (<tt>dborca@yahoo.com</tt>)</p>
 
 <ol class="toc"><li><a href="#section-1">Kernel code</a><ol class="toc"><li><a href="#section-6">Typechecking.</a></li><li><a href="#section-21">Evaluating filters</a></li><li><a href="#section-27">Installing the sandbox</a></li><li><a href="#section-32">Interfacing with LSM</a></li></ol></li><li><a href="#section-42">The assembler</a><ol class="toc"><li><a href="#section-50">Parsing</a></li></ol></li><li><a href="#section-76">Using a sandbox</a></li></ol>
 
@@ -969,7 +970,7 @@ Bringing typechecking together</p>
 
       <div class="codename">Typecheck function</div>
       <div class="code">
-<div class="codeline"><span class="keyword">int</span> lsmsb_filter_typecheck(<span class="keyword">const</span> <span class="keyword">struct</span> lsmsb_filter *filter,</div>
+<div class="codeline"><span class="keyword">static</span> <span class="keyword">int</span> lsmsb_filter_typecheck(<span class="keyword">const</span> <span class="keyword">struct</span> lsmsb_filter *filter,</div>
 <div class="codeline">                           <span class="keyword">const</span> <span class="keyword">uint8_t</span> *context_type_vector)</div>
 <div class="codeline">{</div>
 <div class="codeline">        <span class="keyword">const</span> <span class="keyword">unsigned</span> tva_width = lsmsb_filter_tva_width(filter);</div>
@@ -1032,7 +1033,7 @@ works.</p>
 
       <div class="codename">Evaluating filters</div>
       <div class="code">
-<div class="codeline"><span class="keyword">char</span> lsmsb_filter_run(<span class="keyword">const</span> <span class="keyword">struct</span> lsmsb_filter *filter,</div>
+<div class="codeline"><span class="keyword">static</span> <span class="keyword">char</span> lsmsb_filter_run(<span class="keyword">const</span> <span class="keyword">struct</span> lsmsb_filter *filter,</div>
 <div class="codeline">                      <span class="keyword">const</span> <span class="keyword">struct</span> lsmsb_value *init_values,</div>
 <div class="codeline">                      <span class="keyword">unsigned</span> num_init_values)</div>
 <div class="codeline">{</div>
@@ -1316,7 +1317,7 @@ In order to perform typechecking we need to duplicate that information
 <div class="codeline">};</div>
 <pre>
 </pre>
-<div class="codeline"><span class="keyword">const</span> <span class="keyword">struct</span> filter_context filter_contexts[] = {</div>
+<div class="codeline"><span class="keyword">static</span> <span class="keyword">const</span> <span class="keyword">struct</span> filter_context filter_contexts[] = {</div>
 <div class="codeline">  {<span class="string">"dentry-open"</span>, <span class="string">"BI"</span>}, <span class="comment">// LSMSB_FILTER_CODE_DENTRY_OPEN</span></div>
 <div class="codeline">  {<span class="string">"socket-create"</span>, <span class="string">"IIII"</span>}, <span class="comment">// LSMSB_FILTER_CODE_SOCKET_CREATE</span></div>
 <div class="codeline">  {<span class="string">"socket-connect"</span>, <span class="string">"IIIIIB"</span>}, <span class="comment">// LSMSB_FILTER_CODE_SOCKET_CONNECT</span></div>
@@ -2048,7 +2049,7 @@ in <tt>r4</tt>. For other socket types, those parameters are set to zero.<p>
 <div class="codeline">        <span class="keyword">const</span> <span class="keyword">struct</span> lsmsb_sandbox *sandbox;</div>
 <div class="codeline">        <span class="keyword">const</span> <span class="keyword">struct</span> lsmsb_filter *filter;</div>
 <div class="codeline">        <span class="keyword">struct</span> lsmsb_value registers[6];</div>
-<div class="codeline">        <span class="keyword">const</span> <span class="keyword">struct</span> sock *sk = sock-&gt;sk;</div>
+<div class="codeline">        <span class="keyword">const</span> <span class="keyword">struct</span> sock *sk;</div>
 <pre>
 </pre>
 <div class="codeline">        <span class="keyword">if</span> (!cred-&gt;security)</div>
@@ -2067,6 +2068,7 @@ in <tt>r4</tt>. For other socket types, those parameters are set to zero.<p>
 <div class="codeline">        <span class="keyword">if</span> (!sandbox)</div>
 <div class="codeline">                return 0;</div>
 <div class="codeline">        </div>
+<div class="codeline">        sk = sock-&gt;sk;</div>
 <div class="codeline">        <span class="keyword">if</span> (!sk)</div>
 <div class="codeline">                return 0;</div>
 <div class="codeline">        registers[0].data = NULL;</div>
@@ -2117,7 +2119,7 @@ in <tt>r4</tt>. For other socket types, those parameters are set to zero.<p>
 
       <div class="codename">LSM operations structure</div>
       <div class="code">
-<div class="codeline"><span class="keyword">struct</span> security_operations lsmsb_ops = {</div>
+<div class="codeline"><span class="keyword">static</span> <span class="keyword">struct</span> security_operations lsmsb_ops = {</div>
 <div class="codeline">        .name           = <span class="string">"lsmsb"</span>,</div>
 <div class="codeline">        .setprocattr    = lsmsb_setprocattr,</div>
 <div class="codeline">        .getprocattr    = lsmsb_getprocattr,</div>
@@ -2312,22 +2314,22 @@ opened) and test that <tt>/etc/</tt> is a prefix of the path.</p>
 <pre>
 </pre>
 <div class="codeline">  ldc r6, AF_UNIX;</div>
-<div class="codeline">  eq  r0, r1, r6;</div>
-<div class="codeline">  jnz r0, #done;</div>
+<div class="codeline">  eq  r7, r0, r6;</div>
+<div class="codeline">  jnz r7, #done;</div>
 <pre>
 </pre>
 <div class="codeline">  ldc r6, AF_INET;</div>
-<div class="codeline">  eq  r0, r1, r6;</div>
-<div class="codeline">  jz  r0, #done;</div>
+<div class="codeline">  eq  r7, r0, r6;</div>
+<div class="codeline">  jz  r7, #done;</div>
 <pre>
 </pre>
 <div class="codeline">  ldc r6, localnet;</div>
-<div class="codeline">  and r0, r4, r6;</div>
-<div class="codeline">  eq  r0, r0, r6;</div>
+<div class="codeline">  and r7, r4, r6;</div>
+<div class="codeline">  eq  r7, r7, r6;</div>
 <pre>
 </pre>
 <div class="codeline"><span class="preprocessor">#done:</span></div>
-<div class="codeline">  ret r0;</div>
+<div class="codeline">  ret r7;</div>
 <div class="codeline">}</div>
 <pre>
 </pre>
@@ -2662,6 +2664,10 @@ Parsing the spill slots declaration</p>
       <div class="code">
 <div class="codeline">action set_spill_slots {</div>
 <div class="codeline">  current_filter-&gt;spill_slots = u32_parse(std::string(start, fpc - start));</div>
+<div class="codeline">  <span class="keyword">if</span> (current_filter-&gt;spill_slots &gt; LSMSB_SPILL_SLOTS_MAX) {</div>
+<div class="codeline">    fprintf(stderr, <span class="string">"Error line %u: Invalid number of spill slots: %d\n"</span>, line_no, current_filter-&gt;spill_slots);</div>
+<div class="codeline">    abort();</div>
+<div class="codeline">  }</div>
 <div class="codeline">}</div>
 <pre>
 </pre>
@@ -2683,7 +2689,7 @@ we do everything in a single pass.</p>
 
       <div class="codename">Parsing instructions</div>
       <div class="code">
-<div class="codeline">inst = jump_target | and | eq | ldc | ldi | jnz | jz | jmp | isprefixof | ret;</div>
+<div class="codeline">inst = jump_target | mov | spill | unspill | and | or | xor | eq | ne | gt | lt | gte | lte | ldc | ldi | jnz | jz | jmp | isprefixof | ret;</div>
       </div>
       <div class="sectionrefs">
 <a class="fileref" href="#section-75">lsmsb-as.rl</a> 
@@ -2717,16 +2723,23 @@ so we start with a bunch of helper actions for setting various parts of
       <div class="codename">Helper actions</div>
       <div class="code">
 <div class="codeline">reg = <span class="string">"r"</span> digit+;</div>
+<div class="codeline">slot = <span class="string">"s"</span> digit+;</div>
 <pre>
 </pre>
 <div class="codeline">action set_reg1 {</div>
-<div class="codeline">  op |= reg_parse(std::string(start, fpc - start)) &lt;&lt; 20;</div>
+<div class="codeline">  op |= reg_parse(std::string(start, fpc - start), LSMSB_NUM_REGISTERS) &lt;&lt; 20;</div>
 <div class="codeline">}</div>
 <div class="codeline">action set_reg2 {</div>
-<div class="codeline">  op |= reg_parse(std::string(start, fpc - start)) &lt;&lt; 16;</div>
+<div class="codeline">  op |= reg_parse(std::string(start, fpc - start), LSMSB_NUM_REGISTERS) &lt;&lt; 16;</div>
 <div class="codeline">}</div>
 <div class="codeline">action set_reg3 {</div>
-<div class="codeline">  op |= reg_parse(std::string(start, fpc - start)) &lt;&lt; 12;</div>
+<div class="codeline">  op |= reg_parse(std::string(start, fpc - start), LSMSB_NUM_REGISTERS) &lt;&lt; 12;</div>
+<div class="codeline">}</div>
+<div class="codeline">action set_spill1 {</div>
+<div class="codeline">  op |= reg_parse(std::string(start, fpc - start), current_filter-&gt;spill_slots) &lt;&lt; 16;</div>
+<div class="codeline">}</div>
+<div class="codeline">action set_spill2 {</div>
+<div class="codeline">  op |= reg_parse(std::string(start, fpc - start), current_filter-&gt;spill_slots) &lt;&lt; 12;</div>
 <div class="codeline">}</div>
 <div class="codeline">action set_imm {</div>
 <div class="codeline">  op |= imm_check(u32_parse(std::string(start, fpc - start)));</div>
@@ -2758,8 +2771,13 @@ now:</p>
 <pre>
 </pre>
 <div class="codeline"><span class="keyword">static</span> <span class="keyword">uint32_t</span></div>
-<div class="codeline">reg_parse(<span class="keyword">const</span> std::string &amp;r) {</div>
-<div class="codeline">  return strtoul(r.c_str() + 1, NULL, 10);</div>
+<div class="codeline">reg_parse(<span class="keyword">const</span> std::string &amp;r, <span class="keyword">uint32_t</span> max) {</div>
+<div class="codeline">  <span class="keyword">uint32_t</span> n = strtoul(r.c_str() + 1, NULL, 10);</div>
+<div class="codeline">  <span class="keyword">if</span> (n &gt;= max) {</div>
+<div class="codeline">    fprintf(stderr, <span class="string">"Invalid register: %s\n"</span>, r.c_str());</div>
+<div class="codeline">    abort();</div>
+<div class="codeline">  }</div>
+<div class="codeline">  return n;</div>
 <div class="codeline">}</div>
       </div>
       <div class="sectionrefs">
@@ -2790,6 +2808,24 @@ Parsing the simple operations</p>
 
       <div class="codename">Parsing the simple operations</div>
       <div class="code">
+<div class="codeline">action opcode_mov {</div>
+<div class="codeline">  op |= static_cast&lt;uint32_t&gt;(LSMSB_OPCODE_MOV) &lt;&lt; 24;</div>
+<div class="codeline">}</div>
+<div class="codeline">mov = (<span class="string">"mov"</span> %opcode_mov) . ws . (reg &gt;start %set_reg1) . <span class="string">","</span> . ws . (reg &gt;start %set_reg2) . ws . (<span class="string">";"</span> %push_op) . ws;</div>
+<pre>
+</pre>
+<div class="codeline">action opcode_spill {</div>
+<div class="codeline">  op |= static_cast&lt;uint32_t&gt;(LSMSB_OPCODE_SPILL) &lt;&lt; 24;</div>
+<div class="codeline">}</div>
+<div class="codeline">spill = (<span class="string">"spill"</span> %opcode_spill) . ws . (slot &gt;start %set_spill1) . <span class="string">","</span> . ws . (reg &gt;start %set_reg3) . ws . (<span class="string">";"</span> %push_op) . ws;</div>
+<pre>
+</pre>
+<div class="codeline">action opcode_unspill {</div>
+<div class="codeline">  op |= static_cast&lt;uint32_t&gt;(LSMSB_OPCODE_UNSPILL) &lt;&lt; 24;</div>
+<div class="codeline">}</div>
+<div class="codeline">unspill = (<span class="string">"unspill"</span> %opcode_unspill) . ws . (reg &gt;start %set_reg1) . <span class="string">","</span> . ws . (slot &gt;start %set_spill2) . ws . (<span class="string">";"</span> %push_op) . ws;</div>
+<pre>
+</pre>
 <div class="codeline">action opcode_ldi {</div>
 <div class="codeline">  op |= static_cast&lt;uint32_t&gt;(LSMSB_OPCODE_LDI) &lt;&lt; 24;</div>
 <div class="codeline">}</div>
@@ -2802,13 +2838,33 @@ Parsing the simple operations</p>
 <div class="codeline">ret = (<span class="string">"ret"</span> %opcode_ret) . ws . (reg &gt;start %set_reg1) . ws . (<span class="string">";"</span> %push_op) . ws;</div>
 <pre>
 </pre>
+<div class="codeline">reg_operands =</div>
+<div class="codeline">      (reg &gt;start %set_reg1) . ws . <span class="string">","</span> . ws .</div>
+<div class="codeline">      (reg &gt;start %set_reg2) . ws . <span class="string">","</span> . ws .</div>
+<div class="codeline">      (reg &gt;start %set_reg3);</div>
+<pre>
+</pre>
 <div class="codeline">action opcode_and {</div>
 <div class="codeline">  op |= static_cast&lt;uint32_t&gt;(LSMSB_OPCODE_AND) &lt;&lt; 24;</div>
 <div class="codeline">}</div>
 <div class="codeline">and = (<span class="string">"and"</span> %opcode_and) . ws .</div>
-<div class="codeline">      (reg &gt;start %set_reg1) . ws . <span class="string">","</span> . ws .</div>
-<div class="codeline">      (reg &gt;start %set_reg2) . ws . <span class="string">","</span> . ws .</div>
-<div class="codeline">      (reg &gt;start %set_reg3) . ws .</div>
+<div class="codeline">      reg_operands . ws .</div>
+<div class="codeline">      (<span class="string">";"</span> %push_op) . ws;</div>
+<pre>
+</pre>
+<div class="codeline">action opcode_or {</div>
+<div class="codeline">  op |= static_cast&lt;uint32_t&gt;(LSMSB_OPCODE_OR) &lt;&lt; 24;</div>
+<div class="codeline">}</div>
+<div class="codeline">or = (<span class="string">"or"</span> %opcode_or) . ws .</div>
+<div class="codeline">      reg_operands . ws .</div>
+<div class="codeline">      (<span class="string">";"</span> %push_op) . ws;</div>
+<pre>
+</pre>
+<div class="codeline">action opcode_xor {</div>
+<div class="codeline">  op |= static_cast&lt;uint32_t&gt;(LSMSB_OPCODE_XOR) &lt;&lt; 24;</div>
+<div class="codeline">}</div>
+<div class="codeline">xor = (<span class="string">"xor"</span> %opcode_xor) . ws .</div>
+<div class="codeline">      reg_operands . ws .</div>
 <div class="codeline">      (<span class="string">";"</span> %push_op) . ws;</div>
 <pre>
 </pre>
@@ -2816,9 +2872,47 @@ Parsing the simple operations</p>
 <div class="codeline">  op |= static_cast&lt;uint32_t&gt;(LSMSB_OPCODE_EQ) &lt;&lt; 24;</div>
 <div class="codeline">}</div>
 <div class="codeline">eq = (<span class="string">"eq"</span> %opcode_eq) . ws .</div>
-<div class="codeline">      (reg &gt;start %set_reg1) . ws . <span class="string">","</span> . ws .</div>
-<div class="codeline">      (reg &gt;start %set_reg2) . ws . <span class="string">","</span> . ws .</div>
-<div class="codeline">      (reg &gt;start %set_reg3) . ws .</div>
+<div class="codeline">      reg_operands . ws .</div>
+<div class="codeline">      (<span class="string">";"</span> %push_op) . ws;</div>
+<pre>
+</pre>
+<div class="codeline">action opcode_ne {</div>
+<div class="codeline">  op |= static_cast&lt;uint32_t&gt;(LSMSB_OPCODE_NE) &lt;&lt; 24;</div>
+<div class="codeline">}</div>
+<div class="codeline">ne = (<span class="string">"ne"</span> %opcode_ne) . ws .</div>
+<div class="codeline">      reg_operands . ws .</div>
+<div class="codeline">      (<span class="string">";"</span> %push_op) . ws;</div>
+<pre>
+</pre>
+<div class="codeline">action opcode_gt {</div>
+<div class="codeline">  op |= static_cast&lt;uint32_t&gt;(LSMSB_OPCODE_GT) &lt;&lt; 24;</div>
+<div class="codeline">}</div>
+<div class="codeline">gt = (<span class="string">"gt"</span> %opcode_gt) . ws .</div>
+<div class="codeline">      reg_operands . ws .</div>
+<div class="codeline">      (<span class="string">";"</span> %push_op) . ws;</div>
+<pre>
+</pre>
+<div class="codeline">action opcode_lt {</div>
+<div class="codeline">  op |= static_cast&lt;uint32_t&gt;(LSMSB_OPCODE_LT) &lt;&lt; 24;</div>
+<div class="codeline">}</div>
+<div class="codeline">lt = (<span class="string">"lt"</span> %opcode_lt) . ws .</div>
+<div class="codeline">      reg_operands . ws .</div>
+<div class="codeline">      (<span class="string">";"</span> %push_op) . ws;</div>
+<pre>
+</pre>
+<div class="codeline">action opcode_gte {</div>
+<div class="codeline">  op |= static_cast&lt;uint32_t&gt;(LSMSB_OPCODE_GTE) &lt;&lt; 24;</div>
+<div class="codeline">}</div>
+<div class="codeline">gte = (<span class="string">"gte"</span> %opcode_gte) . ws .</div>
+<div class="codeline">      reg_operands . ws .</div>
+<div class="codeline">      (<span class="string">";"</span> %push_op) . ws;</div>
+<pre>
+</pre>
+<div class="codeline">action opcode_lte {</div>
+<div class="codeline">  op |= static_cast&lt;uint32_t&gt;(LSMSB_OPCODE_LTE) &lt;&lt; 24;</div>
+<div class="codeline">}</div>
+<div class="codeline">lte = (<span class="string">"lte"</span> %opcode_lte) . ws .</div>
+<div class="codeline">      reg_operands . ws .</div>
 <div class="codeline">      (<span class="string">";"</span> %push_op) . ws;</div>
 <pre>
 </pre>
@@ -2826,9 +2920,7 @@ Parsing the simple operations</p>
 <div class="codeline">  op |= static_cast&lt;uint32_t&gt;(LSMSB_OPCODE_ISPREFIXOF) &lt;&lt; 24;</div>
 <div class="codeline">}</div>
 <div class="codeline">isprefixof = (<span class="string">"isprefixof"</span> %opcode_isprefixof) . ws .</div>
-<div class="codeline">             (reg &gt;start %set_reg1) . ws . <span class="string">","</span> . ws .</div>
-<div class="codeline">             (reg &gt;start %set_reg2) . ws . <span class="string">","</span> . ws .</div>
-<div class="codeline">             (reg &gt;start %set_reg3) . ws .</div>
+<div class="codeline">             reg_operands . ws .</div>
 <div class="codeline">             (<span class="string">";"</span> %push_op) . ws;</div>
       </div>
       <div class="sectionrefs">
@@ -3237,7 +3329,7 @@ Finally, we return the number of disabled constants, so the writer may adjust th
 <div class="codeline">        <span class="comment">// constant value is small enough to fit into an immediate.  We could</span></div>
 <div class="codeline">        <span class="comment">// have done this early, in set_const, and leave the constant unused.</span></div>
 <div class="codeline">        <span class="keyword">uint32_t</span> imm = ((U32 *)constants[c1])-&gt;value;</div>
-<div class="codeline">        op &amp;= ~0xFF00FFFF;</div>
+<div class="codeline">        op &amp;= ~0xFF0FFFFF;</div>
 <div class="codeline">        op |= (static_cast&lt;uint32_t&gt;(LSMSB_OPCODE_LDI) &lt;&lt; 24) | imm;</div>
 <div class="codeline">        ops[j] = op;</div>
 <div class="codeline">        continue;</div>
