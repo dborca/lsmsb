@@ -1584,13 +1584,10 @@ static int lsmsb_dentry_open(struct file *f, const struct cred *cred)
 {
 	const struct lsmsb_sandbox *sandbox;
 	const struct lsmsb_filter *filter;
-	char buffer[512];
 	struct lsmsb_value registers[2];
-
-	struct path root;
-	struct path ns_root = { };
-	struct path tmp;
-	char *sp;
+	const char *sp;
+	char *buffer;
+	int rv;
 
 	if (!cred->security)
 		return 0;
@@ -1606,25 +1603,13 @@ static int lsmsb_dentry_open(struct file *f, const struct cred *cred)
 	if (!sandbox)
 		return 0;
 	
-	/* Taken from d_namespace_path(). */
-	read_lock(&current->fs->lock);
-	root = current->fs->root;
-	path_get(&root);
-	read_unlock(&current->fs->lock);
-	spin_lock(&vfsmount_lock);
-	if (root.mnt && root.mnt->mnt_ns)
-		ns_root.mnt = mntget(root.mnt->mnt_ns->root);
-	if (ns_root.mnt)
-		ns_root.dentry = dget(ns_root.mnt->mnt_root);
-	spin_unlock(&vfsmount_lock);
-	spin_lock(&dcache_lock);
-	tmp = ns_root;
-	sp = __d_path(&f->f_path, &tmp, buffer, sizeof(buffer));
-	spin_unlock(&dcache_lock);
-	path_put(&root);
-	path_put(&ns_root);
+	rv = sb_get_name(&f->f_path, 0, &buffer, &sp);
+	if (rv) {
+		kfree(buffer);
+		return -EINVAL;
+	}
 	
-	registers[0].data = sp;
+	registers[0].data = (void *)sp;
 	registers[0].value = strlen(sp);
 	registers[1].data = NULL;
 	registers[1].value = f->f_flags;
@@ -1634,6 +1619,7 @@ static int lsmsb_dentry_open(struct file *f, const struct cred *cred)
 		if (filter) {
 			if (!lsmsb_filter_run(filter, registers,
 					      ARRAY_SIZE(registers))) {
+				kfree(buffer);
 				return -EPERM;
 			}
 		}
@@ -1641,6 +1627,7 @@ static int lsmsb_dentry_open(struct file *f, const struct cred *cred)
 		sandbox = sandbox->parent;
 	}
 
+	kfree(buffer);
 	return 0;
 }
 
@@ -1817,6 +1804,7 @@ security_initcall(lsmsb_init);
 #include <net/sock.h>
 #include <linux/uaccess.h>
 
+#include "path.h"
 #include "lsmsb_external.h"
 
 @<Value structure@>

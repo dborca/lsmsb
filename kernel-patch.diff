@@ -52,4 +52,4 @@ index 0000000..cdf2f17
 +# Makefile for LSMSB
 +#
 +
-+obj-$(CONFIG_SECURITY_LSMSB) := lsmsb.o
++obj-$(CONFIG_SECURITY_LSMSB) := lsmsb.o path.o
