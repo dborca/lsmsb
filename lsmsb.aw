@@ -2208,13 +2208,13 @@ so we start with a bunch of helper actions for setting various parts of
   reg = "r" digit+;
 
   action set_reg1 {
-    op |= reg_parse(std::string(start, fpc - start)) << 20;
+    op |= reg_parse(std::string(start, fpc - start), LSMSB_NUM_REGISTERS) << 20;
   }
   action set_reg2 {
-    op |= reg_parse(std::string(start, fpc - start)) << 16;
+    op |= reg_parse(std::string(start, fpc - start), LSMSB_NUM_REGISTERS) << 16;
   }
   action set_reg3 {
-    op |= reg_parse(std::string(start, fpc - start)) << 12;
+    op |= reg_parse(std::string(start, fpc - start), LSMSB_NUM_REGISTERS) << 12;
   }
   action set_imm {
     op |= imm_check(u32_parse(std::string(start, fpc - start)));
@@ -2238,8 +2238,13 @@ imm_check(uint32_t v) {
 }
 
 static uint32_t
-reg_parse(const std::string &r) {
-  return strtoul(r.c_str() + 1, NULL, 10);
+reg_parse(const std::string &r, uint32_t max) {
+  uint32_t n = strtoul(r.c_str() + 1, NULL, 10);
+  if (n >= max) {
+    fprintf(stderr, "Invalid register: %s\n", r.c_str());
+    abort();
+  }
+  return n;
 }
 
 @/ Pushing new operations
