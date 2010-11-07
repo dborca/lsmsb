@@ -2189,7 +2189,7 @@ in the filter. Since all our jumps are forwards, jump resolution is simple and
 we do everything in a single pass.</p>
 
 @<Parsing instructions@>=
-  inst = jump_target | and | xor | eq | ldc | ldi | jnz | jz | jmp | isprefixof | ret;
+  inst = jump_target | mov | spill | unspill | and | or | xor | eq | ne | gt | lt | gte | lte | ldc | ldi | jnz | jz | jmp | isprefixof | ret;
 
 @/ Parsing simple instructions
 
@@ -2273,6 +2273,21 @@ filter:</p>
 
 @<simple-insts|Parsing the simple operations@>=
 
+  action opcode_mov {
+    op |= static_cast<uint32_t>(LSMSB_OPCODE_MOV) << 24;
+  }
+  mov = ("mov" %opcode_mov) . ws . (reg >start %set_reg1) . "," . ws . (reg >start %set_reg2) . ws . (";" %push_op) . ws;
+
+  action opcode_spill {
+    op |= static_cast<uint32_t>(LSMSB_OPCODE_SPILL) << 24;
+  }
+  spill = ("spill" %opcode_spill) . ws . (slot >start %set_spill1) . "," . ws . (reg >start %set_reg3) . ws . (";" %push_op) . ws;
+
+  action opcode_unspill {
+    op |= static_cast<uint32_t>(LSMSB_OPCODE_UNSPILL) << 24;
+  }
+  unspill = ("unspill" %opcode_unspill) . ws . (reg >start %set_reg1) . "," . ws . (slot >start %set_spill2) . ws . (";" %push_op) . ws;
+
   action opcode_ldi {
     op |= static_cast<uint32_t>(LSMSB_OPCODE_LDI) << 24;
   }
@@ -2295,6 +2310,13 @@ filter:</p>
         reg_operands . ws .
         (";" %push_op) . ws;
 
+  action opcode_or {
+    op |= static_cast<uint32_t>(LSMSB_OPCODE_OR) << 24;
+  }
+  or = ("or" %opcode_or) . ws .
+        reg_operands . ws .
+        (";" %push_op) . ws;
+
   action opcode_xor {
     op |= static_cast<uint32_t>(LSMSB_OPCODE_XOR) << 24;
   }
@@ -2306,6 +2328,41 @@ filter:</p>
     op |= static_cast<uint32_t>(LSMSB_OPCODE_EQ) << 24;
   }
   eq = ("eq" %opcode_eq) . ws .
+        reg_operands . ws .
+        (";" %push_op) . ws;
+
+  action opcode_ne {
+    op |= static_cast<uint32_t>(LSMSB_OPCODE_NE) << 24;
+  }
+  ne = ("ne" %opcode_ne) . ws .
+        reg_operands . ws .
+        (";" %push_op) . ws;
+
+  action opcode_gt {
+    op |= static_cast<uint32_t>(LSMSB_OPCODE_GT) << 24;
+  }
+  gt = ("gt" %opcode_gt) . ws .
+        reg_operands . ws .
+        (";" %push_op) . ws;
+
+  action opcode_lt {
+    op |= static_cast<uint32_t>(LSMSB_OPCODE_LT) << 24;
+  }
+  lt = ("lt" %opcode_lt) . ws .
+        reg_operands . ws .
+        (";" %push_op) . ws;
+
+  action opcode_gte {
+    op |= static_cast<uint32_t>(LSMSB_OPCODE_GTE) << 24;
+  }
+  gte = ("gte" %opcode_gte) . ws .
+        reg_operands . ws .
+        (";" %push_op) . ws;
+
+  action opcode_lte {
+    op |= static_cast<uint32_t>(LSMSB_OPCODE_LTE) << 24;
+  }
+  lte = ("lte" %opcode_lte) . ws .
         reg_operands . ws .
         (";" %push_op) . ws;
 
