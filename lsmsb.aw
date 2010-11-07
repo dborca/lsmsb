@@ -2607,7 +2607,7 @@ Finally, we return the number of disabled constants, so the writer may adjust th
           // constant value is small enough to fit into an immediate.  We could
           // have done this early, in set_const, and leave the constant unused.
           uint32_t imm = ((U32 *)constants[c1])->value;
-          op &= ~0xFF00FFFF;
+          op &= ~0xFF0FFFFF;
           op |= (static_cast<uint32_t>(LSMSB_OPCODE_LDI) << 24) | imm;
           ops[j] = op;
           continue;
