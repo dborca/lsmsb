@@ -1411,8 +1411,10 @@ static int lsmsb_filter_install(struct lsmsb_sandbox *sandbox,
 
 	switch (filter_wire.filter_code) {
 	case LSMSB_FILTER_CODE_DENTRY_OPEN:
+#ifdef CONFIG_SECURITY_NETWORK
 	case LSMSB_FILTER_CODE_SOCKET_CREATE:
 	case LSMSB_FILTER_CODE_SOCKET_CONNECT:
+#endif
 		if (sandbox->filters[filter_wire.filter_code]) {
 			return_code = -EINVAL;
 			goto error;
@@ -1768,8 +1770,10 @@ static struct security_operations lsmsb_ops = {
 	.setprocattr    = lsmsb_setprocattr,
 	.getprocattr    = lsmsb_getprocattr,
 	.dentry_open    = lsmsb_dentry_open,
+#ifdef CONFIG_SECURITY_NETWORK
 	.socket_create  = lsmsb_socket_create,
 	.socket_connect = lsmsb_socket_connect,
+#endif
 	.cred_prepare   = lsmsb_cred_prepare,
 	.cred_free      = lsmsb_cred_free,
 };
