@@ -2,13 +2,31 @@ diff --git a/security/Kconfig b/security/Kconfig
 index bb24477..8ee328d 100644
 --- a/security/Kconfig
 +++ b/security/Kconfig
-@@ -136,6 +136,7 @@ config SECURITY_DEFAULT_MMAP_MIN_ADDR
+@@ -152,6 +152,7 @@ config LSM_MMAP_MIN_ADDR
  source security/selinux/Kconfig
  source security/smack/Kconfig
  source security/tomoyo/Kconfig
 +source security/lsmsb/Kconfig
+ source security/apparmor/Kconfig
  
  source security/integrity/ima/Kconfig
+@@ -177,6 +178,9 @@ choice
+ 	config DEFAULT_SECURITY_TOMOYO
+ 		bool "TOMOYO" if SECURITY_TOMOYO=y
+ 
++	config DEFAULT_SECURITY_LSMSB
++		bool "LSMSB" if SECURITY_LSMSB=y
++
+ 	config DEFAULT_SECURITY_APPARMOR
+ 		bool "AppArmor" if SECURITY_APPARMOR=y
+ 
+@@ -190,6 +194,7 @@ config DEFAULT_SECURITY
+ 	default "selinux" if DEFAULT_SECURITY_SELINUX
+ 	default "smack" if DEFAULT_SECURITY_SMACK
+ 	default "tomoyo" if DEFAULT_SECURITY_TOMOYO
++	default "lsmsb" if DEFAULT_SECURITY_LSMSB
+ 	default "apparmor" if DEFAULT_SECURITY_APPARMOR
+ 	default "" if DEFAULT_SECURITY_DAC
  
 diff --git a/security/Makefile b/security/Makefile
 index fa77021..d8ff6ad 100644
@@ -19,15 +37,15 @@ index fa77021..d8ff6ad 100644
  subdir-$(CONFIG_SECURITY_SMACK)		+= smack
  subdir-$(CONFIG_SECURITY_TOMOYO)        += tomoyo
 +subdir-$(CONFIG_SECURITY_LSMSB)         += lsmsb
+ subdir-$(CONFIG_SECURITY_APPARMOR)	+= apparmor
  
  # always enable default capabilities
- obj-y		+= commoncap.o
-@@ -17,6 +18,7 @@ obj-$(CONFIG_SECURITYFS)		+= inode.o
- obj-$(CONFIG_SECURITY_SELINUX)		+= selinux/built-in.o
+@@ -20,6 +21,7 @@ obj-$(CONFIG_SECURITY_SELINUX)		+= selin
  obj-$(CONFIG_SECURITY_SMACK)		+= smack/built-in.o
+ obj-$(CONFIG_AUDIT)			+= lsm_audit.o
  obj-$(CONFIG_SECURITY_TOMOYO)		+= tomoyo/built-in.o
 +obj-$(CONFIG_SECURITY_LSMSB)		+= lsmsb/built-in.o
- obj-$(CONFIG_SECURITY_ROOTPLUG)		+= root_plug.o
+ obj-$(CONFIG_SECURITY_APPARMOR)		+= apparmor/built-in.o
  obj-$(CONFIG_CGROUP_DEVICE)		+= device_cgroup.o
  
 diff --git a/security/lsmsb/Kconfig b/security/lsmsb/Kconfig
