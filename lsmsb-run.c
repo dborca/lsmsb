@@ -34,7 +34,7 @@
 #ifdef CHECK_SB
 #define ATTR_MODE O_RDWR
 #else
-#define ATTR_MODE O_RDONLY
+#define ATTR_MODE O_WRONLY
 #endif
 
 
