@@ -35,13 +35,13 @@ It's written in a literate programming style, but the derived sources are
 included so that you don't have to bother with that in order to build. You'll
 need a recent (> 2.6.30-rc1) kernel in order to apply the included patch. Once
 you've applied the patch, drop lsmsb.c and path.[ch] into security/lsmsb and
-rebuild. Note that you'll need CONFIG_SECURITY enabled in your kernel config.
-Some filters may also require CONFIG_SECURITY_PATH and CONFIG_SECURITY_NETWORK.
+configure CONFIG_SECURITY=y and CONFIG_DEFAULT_SECURITY="lsmsb"; then rebuild.
+Some filters may require CONFIG_SECURITY_PATH=y and CONFIG_SECURITY_NETWORK=y.
 
 You can assemble a sandbox file with:
   ./lsmsb-as sandbox-input.sb > sandbox
 And then run a command in the sandbox with:
-  ./lsmsb-run sandbox [COMMAND [ARG]...]
+  ./lsmsb-run sandbox [COMMAND [ARG...]]
 
 To read the code, see lsmsb.html
 
