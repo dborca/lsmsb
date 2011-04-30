@@ -35,10 +35,10 @@ unsigned int sb_g_path_max = 2 * PATH_MAX;
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,34)
 static inline void get_fs_root(struct fs_struct *fs, struct path *root)
 {
-	read_lock(&fs->lock);
+	spin_lock(&fs->lock);
 	*root = fs->root;
 	path_get(root);
-	read_unlock(&fs->lock);
+	spin_unlock(&fs->lock);
 }
 #endif
 
